@@ -43,7 +43,14 @@ pv = [clamped_sin(x/24. * 2. * pi) for x in timesteps]
 w = wind_timeseries(24)
 d = demand_timeseries(24)
 ##
-
+function scenarios(n, timesteps)
+    return [@scenario t_xi = random_time(length(timesteps)) s_xi = rand([1,-1]) probability = 1. /n]
+end
+##
+#= Note on signs: s_xi<0 means that energy is requested, s_xi>0 means an additional consumption
+To simplify the problem and avoid using inequalities in constraints, let's first study only s_xi<0
+Then buy-back B>0, therefore it's associated with price c_i
+=#
 @stochastic_model em begin
     @stage 1 begin
         @decision(em, c_pv>=0)
@@ -57,22 +64,19 @@ d = demand_timeseries(24)
         @uncertain t_xi s_xi #t_xi is a vector of zeros, with 1 at timestep of flexibility demand
         @recourse(em, b[t in timesteps])
         @recourse(em, B[t in timesteps])
-        @constraint(em, b+t_xi*F*s_xi.==gco-gci-c_w*w-c_pv*pv+d)
-        @objective(em, Min, c_i*sum(B[B.>0]) - c_o*sum(B[B.<0]))
-        @constraint(em, sum(b)>=-0.5*c_b*e_c) #initial charge = 0.5*c_b*e_c
-        @constraint(em, sum(b)<=0.5*c_b*e_c)
+        @constraint(em, [t in timesteps], b[t]+t_xi[t]*F*s_xi+B[t] == gco[t]-gci[t]-c_w*w[t]-c_pv*pv[t]+d[t]) # add buy-back function here
+        @objective(em, Min, c_i*sum(B)) 
+        @constraint(em, #=[t in timesteps],=# -0.5*c_b*e_c <= sum(b)) #initial charge = 0.5*c_b*e_c
+        @constraint(em, sum(b)<=0.5*c_b*e_c) # not whole sum, only to t
     end
 end 
 
 ## 
-function scenarios(n, timesteps)
-    return [@scenario t_xi = random_time(length(timesteps)) s_xi = rand([1,-1]) probability = 1. /n]
-end
 
 xi_1 = @scenario t_xi = random_time(24, t=3) s_xi = 1 probabibility = 0.5
 
 xi_2 = @scenario t_xi = random_time(24, t=10) s_xi = -1 probabibility = 0.5
-
+##
 sp = instantiate(em, [xi_1, xi_2], optimizer = GLPK.Optimizer)
 
 #@objective(model, Min, c'*x)
