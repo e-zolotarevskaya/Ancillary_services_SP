@@ -30,9 +30,8 @@ end
 function Theta(x)
     return x>=0 ? 1 : 0
 end
-# Global system parameters
 
-
+# Global system parameter
 c_i = 1
 c_o = 1.2
 n_y = 25
@@ -59,11 +58,16 @@ d = demand_timeseries(24)
         @recourse(em, b[t in timesteps])
         @recourse(em, B[t in timesteps])
         @constraint(em, b+t_xi*F*s_xi.==gco-gci-c_w*w-c_pv*pv+d)
-        @objective(em, Min, c_i*sum(Theta.(-B)'*B) - c_o*sum(Theta.(B)'*B))
+        @objective(em, Min, c_i*sum(B[B.>0]) - c_o*sum(B[B.<0]))
         @constraint(em, sum(b)>=-0.5*c_b*e_c) #initial charge = 0.5*c_b*e_c
         @constraint(em, sum(b)<=0.5*c_b*e_c)
     end
 end 
+
+## 
+function scenarios(n, timesteps)
+    return [@scenario t_xi = random_time(length(timesteps)) s_xi = rand([1,-1]) probability = 1. /n]
+end
 
 xi_1 = @scenario t_xi = random_time(24, t=3) s_xi = 1 probabibility = 0.5
 
@@ -72,5 +76,4 @@ xi_2 = @scenario t_xi = random_time(24, t=10) s_xi = -1 probabibility = 0.5
 sp = instantiate(em, [xi_1, xi_2], optimizer = GLPK.Optimizer)
 
 #@objective(model, Min, c'*x)
-
 
