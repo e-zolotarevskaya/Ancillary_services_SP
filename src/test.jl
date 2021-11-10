@@ -44,7 +44,7 @@ w = wind_timeseries(24)
 d = demand_timeseries(24)
 ##
 function scenarios(n, timesteps)
-    return [@scenario t_xi = random_time(length(timesteps)) s_xi = rand([1,-1]) probability = 1. /n]
+    return [@scenario t_xi = random_time(length(timesteps)) s_xi = rand([1,-1]) probability = 1. /n for i in 1:n]
 end
 ##
 #= Note on signs: s_xi<0 means that energy is requested, s_xi>0 means an additional consumption
@@ -73,11 +73,18 @@ end
 
 ## 
 
-xi_1 = @scenario t_xi = random_time(24, t=3) s_xi = 1 probabibility = 0.5
+xi_1 = @scenario t_xi = random_time(24, t=3) s_xi = 1 probability = 0.5
 
-xi_2 = @scenario t_xi = random_time(24, t=10) s_xi = -1 probabibility = 0.5
-##
+xi_2 = @scenario t_xi = random_time(24, t=10) s_xi = -1 probability = 0.5
 sp = instantiate(em, [xi_1, xi_2], optimizer = GLPK.Optimizer)
+##
+optimize!(sp)
+objective_value(sp)
+
+optimal_decision(sp)
+##
+#=xi = scenarios(2, 24)
+sp = instantiate(em, [x for x in xi], optimizer = GLPK.Optimizer)=#
 
 #@objective(model, Min, c'*x)
 
