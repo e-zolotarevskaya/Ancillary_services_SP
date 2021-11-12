@@ -38,7 +38,7 @@ n_y = 25
 c_f = 1.3
 F = 10
 e_c = 5
-timesteps = [i for i in 1:24]
+timesteps = 1:24
 pv = [clamped_sin(x/24. * 2. * pi) for x in timesteps]
 w = wind_timeseries(24)
 d = demand_timeseries(24)
@@ -64,19 +64,23 @@ Then buy-back B>0, therefore it's associated with price c_i
         @uncertain t_xi s_xi #t_xi is 0s, with 1 at the time of flexibility demand
         @recourse(em, b[t in timesteps])
         @recourse(em, B[t in timesteps])
-        @constraint(em, [t in timesteps], 
-        b[t]+t_xi[t]*F*s_xi+B[t] == gco[t]-gci[t]-c_w*w[t]-c_pv*pv[t]+d[t]) 
+        @constraint(em, [t in 1:(t_xi-1)], 
+        b[t]== gco[t]-gci[t]-c_w*w[t]-c_pv*pv[t]+d[t])
+        @constraint(em, 
+        b[t_xi]+F*s_xi+B[t_xi] == gco[t_xi]-gci[t_xi]-c_w*w[t_xi]-c_pv*pv[t_xi]+d[t_xi])
+        @constraint(em, [t in t_xi:length(timesteps)], 
+        b[t]+B[t] == gco[t]-gci[t]-c_w*w[t]-c_pv*pv[t]+d[t])
         @objective(em, Min, c_i*sum(B)) 
         @constraint(em, [t in timesteps], -0.5*c_b*e_c <= sum(b[1:t])) #initial charge = 0.5*c_b*e_c
-        @constraint(em, [t in timesteps], sum(b[1:t])<=0.5*c_b*e_c) # should be not whole sum, only to t
+        @constraint(em, [t in timesteps], sum(b[1:t])<=0.5*c_b*e_c)
     end
 end
 
 ## 
 
-xi_1 = @scenario t_xi = random_time(24, t=3) s_xi = 1 probability = 0.5
+xi_1 = @scenario t_xi = 3 s_xi = -1 probability = 0.5
 
-xi_2 = @scenario t_xi = random_time(24, t=10) s_xi = -1 probability = 0.5
+xi_2 = @scenario t_xi = 10 s_xi = -1 probability = 0.5
 sp = instantiate(em, [xi_1, xi_2], optimizer = GLPK.Optimizer)
 ##
 optimize!(sp)
@@ -86,5 +90,3 @@ optimal_decision(sp)
 ##
 #=xi = scenarios(2, 24)
 sp = instantiate(em, [x for x in xi], optimizer = GLPK.Optimizer)=#
-
-#@objective(model, Min, c'*x)
