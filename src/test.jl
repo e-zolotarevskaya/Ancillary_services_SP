@@ -23,14 +23,14 @@ end
 function wind_timeseries(Length)
     return 4. .+ 2. .*rand(Length)
 end
-##
+
 function demand_timeseries(Length)
     return 10. .+2. .*rand(Length)
 end
 function Theta(x)
     return x>=0 ? 1 : 0
 end
-
+##
 # Global system parameter
 c_i = 1
 c_o = 1.2
@@ -61,15 +61,16 @@ Then buy-back B>0, therefore it's associated with price c_i
         @objective(em, Min, c_pv+c_w+c_b+c_i*sum(gci)-c_o*sum(gco))
     end
     @stage 2 begin
-        @uncertain t_xi s_xi #t_xi is a vector of zeros, with 1 at timestep of flexibility demand
+        @uncertain t_xi s_xi #t_xi is 0s, with 1 at the time of flexibility demand
         @recourse(em, b[t in timesteps])
         @recourse(em, B[t in timesteps])
-        @constraint(em, [t in timesteps], b[t]+t_xi[t]*F*s_xi+B[t] == gco[t]-gci[t]-c_w*w[t]-c_pv*pv[t]+d[t]) # add buy-back function here
+        @constraint(em, [t in timesteps], 
+        b[t]+t_xi[t]*F*s_xi+B[t] == gco[t]-gci[t]-c_w*w[t]-c_pv*pv[t]+d[t]) 
         @objective(em, Min, c_i*sum(B)) 
-        @constraint(em, #=[t in timesteps],=# -0.5*c_b*e_c <= sum(b)) #initial charge = 0.5*c_b*e_c
-        @constraint(em, sum(b)<=0.5*c_b*e_c) # not whole sum, only to t
+        @constraint(em, [t in timesteps], -0.5*c_b*e_c <= sum(b[1:t])) #initial charge = 0.5*c_b*e_c
+        @constraint(em, [t in timesteps], sum(b[1:t])<=0.5*c_b*e_c) # should be not whole sum, only to t
     end
-end 
+end
 
 ## 
 
@@ -87,4 +88,3 @@ optimal_decision(sp)
 sp = instantiate(em, [x for x in xi], optimizer = GLPK.Optimizer)=#
 
 #@objective(model, Min, c'*x)
-
