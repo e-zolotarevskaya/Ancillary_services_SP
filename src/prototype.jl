@@ -31,13 +31,21 @@ function Theta(x)
     return x>=0 ? 1 : 0
 end
 ##
+function plot_results(od, pv, w)
+    plt = plot(od[4:27], label = "gci")
+    plot!(plt, -od[28:end], label = "gco")
+    plot!(plt, pv.*od[1], label = "pv")
+    plot!(plt, w.*od[2], label = "wind")
+    display(plt)
+end
+##
 # Global system parameter
 c_i = 1
 c_o = 1.2
 n_y = 25
 c_f = 1.3
-F = 10
-e_c = 5
+F = 3
+e_c = 10
 timesteps = 1:24
 pv = [clamped_sin(x/24. * 2. * pi) for x in timesteps]
 w = wind_timeseries(24)
@@ -58,17 +66,18 @@ Then buy-back B>0, therefore it's associated with price c_i
         @decision(em, c_b>=0)
         @decision(em, gci[t in timesteps]>=0)
         @decision(em, gco[t in timesteps]>=0)
-        @objective(em, Min, c_pv+c_w+c_b+c_i*sum(gci)-c_o*sum(gco))
+        @objective(em, Min, c_pv/n_y+c_w/n_y+c_b/n_y+c_i*sum(gci)-c_o*sum(gco))
     end
     @stage 2 begin
         @uncertain t_xi s_xi #t_xi is 0s, with 1 at the time of flexibility demand
         @recourse(em, b[t in timesteps])
         @recourse(em, B[t in timesteps])
+        @constraint(em, [t in 1:(t_xi-1)], B[t]==0)
         @constraint(em, [t in 1:(t_xi-1)], 
-        b[t]== gco[t]-gci[t]-c_w*w[t]-c_pv*pv[t]+d[t])
+        b[t] == gco[t]-gci[t]-c_w*w[t]-c_pv*pv[t]+d[t])
         @constraint(em, 
         b[t_xi]+F*s_xi+B[t_xi] == gco[t_xi]-gci[t_xi]-c_w*w[t_xi]-c_pv*pv[t_xi]+d[t_xi])
-        @constraint(em, [t in t_xi:length(timesteps)], 
+        @constraint(em, [t in (t_xi+1):length(timesteps)], 
         b[t]+B[t] == gco[t]-gci[t]-c_w*w[t]-c_pv*pv[t]+d[t])
         @objective(em, Min, c_i*sum(B)) 
         @constraint(em, [t in timesteps], -0.5*c_b*e_c <= sum(b[1:t])) #initial charge = 0.5*c_b*e_c
@@ -78,15 +87,23 @@ end
 
 ## 
 
-xi_1 = @scenario t_xi = 3 s_xi = -1 probability = 0.5
+xi_1 = @scenario t_xi = 3 s_xi = 0 probability = 1.0
 
 xi_2 = @scenario t_xi = 10 s_xi = -1 probability = 0.5
-sp = instantiate(em, [xi_1, xi_2], optimizer = GLPK.Optimizer)
+sp = instantiate(em, [xi_1], optimizer = GLPK.Optimizer)
 ##
 optimize!(sp)
 objective_value(sp)
 
-optimal_decision(sp)
+od = optimal_decision(sp)
 ##
 #=xi = scenarios(2, 24)
 sp = instantiate(em, [x for x in xi], optimizer = GLPK.Optimizer)=#
+plot_results(od, pv, w)
+plot(od[4:27])
+plot(od[28:end])
+plot(d)
+plot(w)
+od[2]
+plot(od[2]*w)
+od[3]
