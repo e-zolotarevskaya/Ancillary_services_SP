@@ -7,6 +7,7 @@ using GLPK
 using Pipe
 using Random
 using Plots
+using JuMP
 
 ## Utility functions
 function random_time(Length;t=nothing)
@@ -40,8 +41,8 @@ function plot_results(od, pv, w)
 end
 ##
 # Global system parameter
-c_i = 1
-c_o = 1.2
+c_i = 1.2
+c_o = 1
 n_y = 25
 c_f = 1.3
 F = 3
@@ -69,25 +70,27 @@ Then buy-back B>0, therefore it's associated with price c_i
         @objective(em, Min, c_pv/n_y+c_w/n_y+c_b/n_y+c_i*sum(gci)-c_o*sum(gco))
     end
     @stage 2 begin
-        @uncertain t_xi s_xi #t_xi is 0s, with 1 at the time of flexibility demand
+        @uncertain t_xi s_xi #t_xi the time of flexibility demand, s_xi - sign (±1 or 0)
         @recourse(em, b[t in timesteps])
         @recourse(em, B[t in timesteps])
-        @constraint(em, [t in 1:(t_xi-1)], B[t]==0)
+        @constraint(em, [t in timesteps], s_xi*B[t]<=0)
+        @constraint(em, [t in 1:t_xi], B[t]==0)
         @constraint(em, [t in 1:(t_xi-1)], 
         b[t] == gco[t]-gci[t]-c_w*w[t]-c_pv*pv[t]+d[t])
         @constraint(em, 
         b[t_xi]+F*s_xi+B[t_xi] == gco[t_xi]-gci[t_xi]-c_w*w[t_xi]-c_pv*pv[t_xi]+d[t_xi])
         @constraint(em, [t in (t_xi+1):length(timesteps)], 
         b[t]+B[t] == gco[t]-gci[t]-c_w*w[t]-c_pv*pv[t]+d[t])
-        @objective(em, Min, c_i*sum(B)) 
-        @constraint(em, [t in timesteps], -0.5*c_b*e_c <= sum(b[1:t])) #initial charge = 0.5*c_b*e_c
-        @constraint(em, [t in timesteps], sum(b[1:t])<=0.5*c_b*e_c)
+        @objective(em, Min, c_i*sum(B)+c_pv/n_y+c_w/n_y+c_b/n_y+c_i*sum(gci)-c_o*sum(gco))
+        #@constraint(em, b[1] == 0.5*c_b*e_c) # initial charge
+        @constraint(em, [t in timesteps], -0.5*c_b*e_c <= sum(b[1:t]))
+        @constraint(em, [t in timesteps], sum(b[1:t]) <= 0.5*c_b*e_c)
     end
 end
 
 ## 
 
-xi_1 = @scenario t_xi = 3 s_xi = 0 probability = 1.0
+xi_1 = @scenario t_xi = 3 s_xi = -1 probability = 0.5
 
 xi_2 = @scenario t_xi = 10 s_xi = -1 probability = 0.5
 sp = instantiate(em, [xi_1], optimizer = GLPK.Optimizer)
@@ -107,3 +110,29 @@ plot(w)
 od[2]
 plot(od[2]*w)
 od[3]
+plot(pv)
+
+## 
+#=
+model em begin
+
+        @variable(em, c_pv>=0)
+        @variable(em, c_w>=0)
+        @variable(em, c_b>=0)
+        @variable(em, gci[t in timesteps]>=0)
+        @variable(em, gco[t in timesteps]>=0)
+        @variable(em, b[t in timesteps])
+        @variable(em, B[t in timesteps])
+        @constraint(em, [t in timesteps], s_xi*B[t]<=0)
+        @constraint(em, [t in 1:t_xi], B[t]==0)
+        @constraint(em, [t in 1:(t_xi-1)], 
+        b[t] == gco[t]-gci[t]-c_w*w[t]-c_pv*pv[t]+d[t])
+        @constraint(em, 
+        b[t_xi]+F*s_xi+B[t_xi] == gco[t_xi]-gci[t_xi]-c_w*w[t_xi]-c_pv*pv[t_xi]+d[t_xi])
+        @constraint(em, [t in (t_xi+1):length(timesteps)], 
+        b[t]+B[t] == gco[t]-gci[t]-c_w*w[t]-c_pv*pv[t]+d[t])
+        @objective(em, Min, c_i*sum(B)+c_pv/n_y+c_w/n_y+c_b/n_y+c_i*sum(gci)-c_o*sum(gco))
+        #@constraint(em, b[1] == 0.5*c_b*e_c) # initial charge
+        @constraint(em, [t in timesteps], -0.5*c_b*e_c <= sum(b[1:t]))
+        @constraint(em, [t in timesteps], sum(b[1:t]) <= 0.5*c_b*e_c)
+end=#
