@@ -1,4 +1,7 @@
 # Gas problem von lecture 1, linear programming
+cd(@__DIR__)
+using Pkg
+Pkg.activate(".")
 using Clp, JuMP
 sources = ["NOR", "NL", "LNG1", "LNG2", "RU"]
 
