@@ -25,3 +25,6 @@ Manifest.toml
 
 # Weather and demand data, for internal use only
 data/
+
+#Mac Version from Paul 
+.DS_Store
