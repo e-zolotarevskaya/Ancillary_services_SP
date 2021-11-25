@@ -13,7 +13,7 @@ using CSV
 
 
 ## Utility functions
-function clamped_sin(x)
+#=function clamped_sin(x)
     return sin(x-8)>0 ? 3. .*sin(x-8) : 0.
 end
 
@@ -23,11 +23,8 @@ end
 
 function demand_timeseries(Length)
     return 10. .+2. .*rand(Length)
-end
+end=#
 
-function Theta(x)
-    return x>=0 ? 1 : 0
-end
 ##
 function plot_results(od, pv, w, d)
     t = Int((length(od)-3)/2+3)
@@ -41,8 +38,8 @@ end
 ##
 # Global system parameter
 c_i = .3
-c_o = .1
-timesteps = 1:12
+c_o = .0
+timesteps = 1:24
 time_scale = 10. *365*24/length(timesteps)
 c_pv = 1000.
 c_wind = 1000.
@@ -50,9 +47,16 @@ c_storage = 400.
 c_flex = .5
 F = 3
 storage_scale = .5
+
+# Define weather and demand data
+pv = CSV.read("../data/pv_Halle18.csv", DataFrame)[timesteps, 1]
+wind = CSV.read("../data/wind_Karholz.csv", DataFrame)[timesteps, 1]
+demand = CSV.read("../data/demand_Industriepark.csv", DataFrame)[timesteps, 1]
+
+#=
 pv = [clamped_sin(x/length(timesteps)*2  * pi) for x in timesteps]
 wind = wind_timeseries(length(timesteps))
-demand = demand_timeseries(length(timesteps))
+demand = demand_timeseries(length(timesteps))=#
 ##
 function scenarios(n, timesteps)
     return [@scenario t_xi = rand(1:length(timesteps)) s_xi = rand([1]) probability = 1. /n for i in 1:n]
@@ -83,14 +87,12 @@ Then buy-back B>0, therefore it's associated with price c_i
         @constraint(em, [t in timesteps], s_xi*B[t]<=0)
         @constraint(em, [t in 1:t_xi], B[t]==0)
         @constraint(em, [t in 1:(t_xi-1)], 
-        #storage[t] == gco[t]-gci[t]-u_wind*wind[t]-c_pv*pv[t]+demand[t])
-        gci[t]-gco[t])
+        gci[t]-gco[t]+u_pv*wind[t]+u_wind*wind[t]-demand[t]+storage[t]==0)
         @constraint(em, 
-        storage[t_xi]+F*s_xi+B[t_xi] == gco[t_xi]-gci[t_xi]-u_wind*wind[t_xi]-c_pv*pv[t_xi]+demand[t_xi])
-        @constraint(em, [t in (t_xi+1):length(timesteps)], 
-        storage[t]+B[t] == gco[t]-gci[t]-u_wind*wind[t]-c_pv*pv[t]+demand[t])
+        gci[t_xi]-gco[t_xi]+u_pv*wind[t_xi]+u_wind*wind[t_xi]-demand[t_xi]+storage[t_xi]+F*s_xi+B[t_xi]==0)
+        @constraint(em, [t in (t_xi+1):length(timesteps)],
+        gci[t]-gco[t]+u_pv*wind[t]+u_wind*wind[t]-demand[t]+storage[t]+B[t]==0)
         @objective(em, Min, c_i*sum(B)+u_pv*c_pv/time_scale+u_wind*c_wind/time_scale+u_storage*c_storage/time_scale+c_i*sum(gci)-c_o*sum(gco))
-        #@constraint(em, b[1] == 0.5*c_b*e_c) # initial charge
         @constraint(em, [t in timesteps], -0.5*u_storage*storage_scale <= sum(storage[1:t]))
         @constraint(em, [t in timesteps], sum(storage[1:t]) <= 0.5*u_storage*storage_scale)
         @constraint(em, storage[1]==storage[length(timesteps)])
@@ -131,6 +133,3 @@ println("Objective value in scenario 2: $(objective_value(sp, 2))")
 println("Optimal recourse in scenario 2: $(optimal_recourse_decision(sp, 2))")
 
 ## 
-pv_data = CSV.read("../data/pv_Halle18.csv", DataFrame)
-
-pv_data_1day = pv_data[1:24,1]
