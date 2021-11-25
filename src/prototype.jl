@@ -11,7 +11,6 @@ using JuMP
 using DataFrames
 using CSV
 
-
 ## Utility functions
 #=function clamped_sin(x)
     return sin(x-8)>0 ? 3. .*sin(x-8) : 0.
@@ -37,8 +36,8 @@ function plot_results(od, pv, w, d)
 end
 ##
 # Global system parameter
-c_i = .3
-c_o = .0
+c_i = .03
+c_o = .01
 timesteps = 1:24
 time_scale = 10. *365*24/length(timesteps)
 c_pv = 1000.
@@ -47,7 +46,7 @@ c_storage = 400.
 c_flex = .5
 F = 3
 storage_scale = .5
-
+##
 # Define weather and demand data
 pv = CSV.read("../data/pv_Halle18.csv", DataFrame)[timesteps, 1]
 wind = CSV.read("../data/wind_Karholz.csv", DataFrame)[timesteps, 1]
@@ -87,12 +86,12 @@ Then buy-back B>0, therefore it's associated with price c_i
         @constraint(em, [t in timesteps], s_xi*B[t]<=0)
         @constraint(em, [t in 1:t_xi], B[t]==0)
         @constraint(em, [t in 1:(t_xi-1)], 
-        gci[t]-gco[t]+u_pv*wind[t]+u_wind*wind[t]-demand[t]+storage[t]==0)
+        gci[t]-gco[t]+u_pv*pv[t]+u_wind*wind[t]-demand[t]+storage[t]==0)
         @constraint(em, 
-        gci[t_xi]-gco[t_xi]+u_pv*wind[t_xi]+u_wind*wind[t_xi]-demand[t_xi]+storage[t_xi]+F*s_xi+B[t_xi]==0)
+        gci[t_xi]-gco[t_xi]+u_pv*pv[t_xi]+u_wind*wind[t_xi]-demand[t_xi]+storage[t_xi]+F*s_xi+B[t_xi]==0)
         @constraint(em, [t in (t_xi+1):length(timesteps)],
-        gci[t]-gco[t]+u_pv*wind[t]+u_wind*wind[t]-demand[t]+storage[t]+B[t]==0)
-        @objective(em, Min, c_i*sum(B)+u_pv*c_pv/time_scale+u_wind*c_wind/time_scale+u_storage*c_storage/time_scale+c_i*sum(gci)-c_o*sum(gco))
+        gci[t]-gco[t]+u_pv*pv[t]+u_wind*wind[t]-demand[t]+storage[t]+B[t]==0)
+        @objective(em, Min, c_i*sum(B))
         @constraint(em, [t in timesteps], -0.5*u_storage*storage_scale <= sum(storage[1:t]))
         @constraint(em, [t in timesteps], sum(storage[1:t]) <= 0.5*u_storage*storage_scale)
         @constraint(em, storage[1]==storage[length(timesteps)])
