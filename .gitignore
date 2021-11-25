@@ -28,3 +28,8 @@ data/
 
 #Mac Version from Paul 
 .DS_Store
+
+# ipynb checkpoints
+python_prototype/.ipynb_checkpoints
+
+.vscode/settings.json
