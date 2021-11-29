@@ -11,27 +11,16 @@ using JuMP
 using DataFrames
 using CSV
 
-## Utility functions
-#=function clamped_sin(x)
-    return sin(x-8)>0 ? 3. .*sin(x-8) : 0.
-end
-
-function wind_timeseries(Length)
-    return 1. .+ 0.1 .*rand(Length)
-end
-
-function demand_timeseries(Length)
-    return 10. .+2. .*rand(Length)
-end=#
-
 ##
 function plot_results(od, pv, w, d)
     t = Int((length(od)-3)/2+3)
-    plt = plot(od[4:t], label = "gci")
-    plot!(plt, -od[t+1:end], label = "gco")
-    plot!(plt, pv.*od[1], label = "pv")
+    gci = od[4:t]
+    gco = od[t+1:end]
+    gc = [gci[i]==0 ? -gco[i] : gci[i] for i in 1:length(gci)]
+    plt = plot(gc, label = "grid connection")
+    #plot!(plt, pv.*od[1], label = "pv")
     plot!(plt, w.*od[2], label = "wind")
-    plot!(plt, d, label = "demand")
+    plot!(plt, -d, label = "demand", xlabel = "t (h)", ylabel = "P (kW)")
     display(plt)
 end
 ##
@@ -44,8 +33,8 @@ c_pv = 1000.
 c_wind = 1000.
 c_storage = 400.
 c_flex = .5
-F = 3
-storage_scale = .5
+F = 100
+storage_scale = 1.
 ##
 # Define weather and demand data
 pv = CSV.read("../data/pv_Halle18.csv", DataFrame)[timesteps, 1]
@@ -58,7 +47,7 @@ wind = wind_timeseries(length(timesteps))
 demand = demand_timeseries(length(timesteps))=#
 ##
 function scenarios(n, timesteps)
-    return [@scenario t_xi = rand(1:length(timesteps)) s_xi = rand([1]) probability = 1. /n for i in 1:n]
+    return [@scenario t_xi = rand(1:length(timesteps)) s_xi = rand([-1]) probability = 1. /n for i in 1:n]
 end
 ##
 #= Note on signs: s_xi<0 means that energy is requested, s_xi>0 means an additional consumption
@@ -101,7 +90,8 @@ end
 #xi = scenarios(10, timesteps)
 xi_1 = @scenario t_xi = 2 s_xi = -1 probability = 0.5
 xi_2 = @scenario t_xi = 1 s_xi = -1 probability = 0.5
-sp = instantiate(em, [xi_1, xi_2], optimizer = GLPK.Optimizer)
+xi = scenarios(5, timesteps)
+sp = instantiate(em, xi, optimizer = GLPK.Optimizer)
 ##
 optimize!(sp)
 objective_value(sp)
@@ -118,9 +108,15 @@ println("Termination status: $(termination_status(sp))")
 println("Objective value: $(objective_value(sp))")
 println("Optimal decision: $(optimal_decision(sp))")
 
+##
+u_pv = sp[1, :u_pv]
+u_wind = sp[1, :u_wind]
+u_storage = sp[1, :u_storage]
 # First stage
 println("value(u_pv) = $(value(u_pv))")
 println("value(u_wind) = $(value(u_wind))")
+println("value(u_storage) = $(value(u_storage))")
+
 
 # Scenario 1
 # Second stage
