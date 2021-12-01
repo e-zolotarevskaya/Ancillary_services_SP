@@ -24,10 +24,10 @@ function plot_results(od, pv, w, d)
     display(plt)
 end
 ##
-# Global system parameter
+# Global system parameters
 c_i = .03
 c_o = .01
-timesteps = 1:24
+timesteps = 1:240
 time_scale = 10. *365*24/length(timesteps)
 c_pv = 1000.
 c_wind = 1000.
@@ -47,7 +47,7 @@ wind = wind_timeseries(length(timesteps))
 demand = demand_timeseries(length(timesteps))=#
 ##
 function scenarios(n, timesteps)
-    return [@scenario t_xi = rand(1:length(timesteps)) s_xi = rand([-1]) probability = 1. /n for i in 1:n]
+    return [@scenario t_xi = rand(1:length(timesteps)-2) s_xi = rand([-1]) probability = 1. /n for i in 1:n]
 end
 ##
 #= Note on signs: s_xi<0 means that energy is requested, s_xi>0 means an additional consumption
@@ -83,14 +83,14 @@ Then buy-back B>0, therefore it's associated with price c_i
         @objective(em, Min, c_i*sum(B))
         @constraint(em, [t in timesteps], -0.5*u_storage*storage_scale <= sum(storage[1:t]))
         @constraint(em, [t in timesteps], sum(storage[1:t]) <= 0.5*u_storage*storage_scale)
-        @constraint(em, storage[1]==storage[length(timesteps)])
+        @constraint(em, sum(storage) == 0)
     end
 end
 ## 
 #xi = scenarios(10, timesteps)
 xi_1 = @scenario t_xi = 2 s_xi = -1 probability = 0.5
 xi_2 = @scenario t_xi = 1 s_xi = -1 probability = 0.5
-xi = scenarios(5, timesteps)
+xi = scenarios(10, timesteps)
 sp = instantiate(em, xi, optimizer = GLPK.Optimizer)
 ##
 optimize!(sp)
@@ -127,4 +127,46 @@ println("Optimal recourse in scenario 1: $(optimal_recourse_decision(sp, 1))")
 println("Objective value in scenario 2: $(objective_value(sp, 2))")
 println("Optimal recourse in scenario 2: $(optimal_recourse_decision(sp, 2))")
 
+# Scenario 2
+println("Objective value in scenario 3: $(objective_value(sp, 3))")
+println("Optimal recourse in scenario 3: $(optimal_recourse_decision(sp, 3))")
+
 ## 
+function plot_recourse(sp, scen)
+    println("Objective value in scenario $scen: $(objective_value(sp, scen))")
+    #t = Int((length(od)-3)/2+3)
+    od = optimal_recourse_decision(sp, 3)
+    s = Int(length(od)/2)
+    stor_flow = od[1:s]
+    stor = [sum(stor_flow[1:i]) for i in 1:s]
+    #gco = od[t+1:end]
+    #gc = [gci[i]==0 ? -gco[i] : gci[i] for i in 1:length(gci)]
+    plt = plot(stor, label = "storage charge")
+    #plot!(plt, pv.*od[1], label = "pv")
+    #plot!(plt, w.*od[2], label = "wind")
+    #plot!(plt, -d, label = "demand", xlabel = "t (h)", ylabel = "P (kW)")
+    display(plt)
+end
+
+plot_recourse(sp, 1)
+
+function plot_results_scen(sp, pv, w, d, scen)
+    od = optimal_decision(sp)
+    t = Int((length(od)-3)/2+3)
+    gci = od[4:t]
+    gco = od[t+1:end]
+    gc = [gci[i]==0 ? -gco[i] : gci[i] for i in 1:length(gci)]
+    plt = plot(gc, label = "grid connection")
+    plot!(plt, pv.*od[1], label = "pv")
+    plot!(plt, w.*od[2], label = "wind")
+    plot!(plt, -d, label = "demand", xlabel = "t (h)", ylabel = "P (kW)")
+    println("Objective value in scenario $scen: $(objective_value(sp, scen))")
+    #t = Int((length(od)-3)/2+3)
+    ord = optimal_recourse_decision(sp, 3)
+    stor_flow = ord[1:t]
+    stor = [sum(stor_flow[1:i]) for i in 1:t]
+    plt_st = plot(stor, label = "storage charge")
+    plot(plt, plt_st, layout = (2, 1))
+end
+
+plot_results_scen(sp, pv, wind, demand, 1)
