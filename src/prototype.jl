@@ -12,16 +12,33 @@ using DataFrames
 using CSV
 
 ##
-function plot_results(od, pv, w, d)
+function plot_results(sp, pv, w, d; scen = nothing)
+    od = optimal_decision(sp)
     t = Int((length(od)-3)/2+3)
     gci = od[4:t]
     gco = od[t+1:end]
     gc = [gci[i]==0 ? -gco[i] : gci[i] for i in 1:length(gci)]
     plt = plot(gc, label = "grid connection")
-    #plot!(plt, pv.*od[1], label = "pv")
-    plot!(plt, w.*od[2], label = "wind")
+    if od[1] != 0
+        plot!(plt, pv.*od[1], label = "pv")
+    end
+    if od[2] != 0 
+        plot!(plt, w.*od[2], label = "wind")
+    end
     plot!(plt, -d, label = "demand", xlabel = "t (h)", ylabel = "P (kW)")
-    display(plt)
+    if !isnothing(scen)
+    println("Objective value in scenario $scen: $(objective_value(sp, scen))")
+    #t = Int((length(od)-3)/2+3)
+        ord = optimal_recourse_decision(sp, 3)
+        stor_flow = ord[1:t]
+        stor = [sum(stor_flow[1:i]) for i in 1:t]
+        buyback = ord[t:end]
+        plot!(plt, buyback, label = "buy-back")
+        plt_st = plot(stor, label = "storage charge")
+        plt_general = plot(plt, plt_st, layout = (2, 1))
+        display(plt_general)
+    else display(plt)
+    end
 end
 ##
 # Global system parameters
@@ -100,7 +117,7 @@ od = optimal_decision(sp)
 ##
 #=xi = scenarios(2, 24)
 sp = instantiate(em, [x for x in xi], optimizer = GLPK.Optimizer)=#
-plot_results(od, pv, wind, demand)
+plot_results(sp, pv, wind, demand)
 
 ##
 # Main result
@@ -118,55 +135,11 @@ println("value(u_wind) = $(value(u_wind))")
 println("value(u_storage) = $(value(u_storage))")
 
 
-# Scenario 1
 # Second stage
-println("Objective value in scenario 1: $(objective_value(sp, 1))")
-println("Optimal recourse in scenario 1: $(optimal_recourse_decision(sp, 1))")
-
-# Scenario 2
-println("Objective value in scenario 2: $(objective_value(sp, 2))")
-println("Optimal recourse in scenario 2: $(optimal_recourse_decision(sp, 2))")
-
-# Scenario 2
-println("Objective value in scenario 3: $(objective_value(sp, 3))")
-println("Optimal recourse in scenario 3: $(optimal_recourse_decision(sp, 3))")
+for s in 1:10
+    println("Objective value in scenario 1: $(objective_value(sp, 1))")
+    println("Optimal recourse in scenario 1: $(optimal_recourse_decision(sp, 1))")
+    plot_results(sp, pv, wind, demand, scen = s)
+end
 
 ## 
-function plot_recourse(sp, scen)
-    println("Objective value in scenario $scen: $(objective_value(sp, scen))")
-    #t = Int((length(od)-3)/2+3)
-    od = optimal_recourse_decision(sp, 3)
-    s = Int(length(od)/2)
-    stor_flow = od[1:s]
-    stor = [sum(stor_flow[1:i]) for i in 1:s]
-    #gco = od[t+1:end]
-    #gc = [gci[i]==0 ? -gco[i] : gci[i] for i in 1:length(gci)]
-    plt = plot(stor, label = "storage charge")
-    #plot!(plt, pv.*od[1], label = "pv")
-    #plot!(plt, w.*od[2], label = "wind")
-    #plot!(plt, -d, label = "demand", xlabel = "t (h)", ylabel = "P (kW)")
-    display(plt)
-end
-
-plot_recourse(sp, 1)
-
-function plot_results_scen(sp, pv, w, d, scen)
-    od = optimal_decision(sp)
-    t = Int((length(od)-3)/2+3)
-    gci = od[4:t]
-    gco = od[t+1:end]
-    gc = [gci[i]==0 ? -gco[i] : gci[i] for i in 1:length(gci)]
-    plt = plot(gc, label = "grid connection")
-    plot!(plt, pv.*od[1], label = "pv")
-    plot!(plt, w.*od[2], label = "wind")
-    plot!(plt, -d, label = "demand", xlabel = "t (h)", ylabel = "P (kW)")
-    println("Objective value in scenario $scen: $(objective_value(sp, scen))")
-    #t = Int((length(od)-3)/2+3)
-    ord = optimal_recourse_decision(sp, 3)
-    stor_flow = ord[1:t]
-    stor = [sum(stor_flow[1:i]) for i in 1:t]
-    plt_st = plot(stor, label = "storage charge")
-    plot(plt, plt_st, layout = (2, 1))
-end
-
-plot_results_scen(sp, pv, wind, demand, 1)
