@@ -29,9 +29,10 @@ function plot_results(sp, pv, w, d; scen = nothing)
     if !isnothing(scen)
     println("Objective value in scenario $scen: $(objective_value(sp, scen))")
     #t = Int((length(od)-3)/2+3)
-        ord = optimal_recourse_decision(sp, 3)
+        ord = optimal_recourse_decision(sp, scen)
         stor_flow = ord[1:t]
         stor = [sum(stor_flow[1:i]) for i in 1:t]
+        stor.+=0.5*od[3]
         buyback = ord[t:end]
         plot!(plt, buyback, label = "buy-back")
         plt_st = plot(stor, label = "storage charge")
@@ -44,24 +45,23 @@ end
 # Global system parameters
 c_i = .03
 c_o = .01
-timesteps = 1:240
+timesteps = 1:48
 time_scale = 10. *365*24/length(timesteps)
 c_pv = 1000.
 c_wind = 1000.
 c_storage = 400.
 c_flex = .5
-F = 100
+F = 100.
 storage_scale = 1.
 ##
 # Define weather and demand data
 pv = CSV.read("../data/pv_Halle18.csv", DataFrame)[timesteps, 1]
 wind = CSV.read("../data/wind_Karholz.csv", DataFrame)[timesteps, 1]
 demand = CSV.read("../data/demand_Industriepark.csv", DataFrame)[timesteps, 1]
-
-#=
-pv = [clamped_sin(x/length(timesteps)*2  * pi) for x in timesteps]
-wind = wind_timeseries(length(timesteps))
-demand = demand_timeseries(length(timesteps))=#
+#=pv = CSV.read("../data/basic_example.csv", DataFrame)[timesteps, 3]
+wind = CSV.read("../data/basic_example.csv", DataFrame)[timesteps, 4]
+demand = CSV.read("../data/basic_example.csv", DataFrame)[timesteps, 2]
+=#
 ##
 function scenarios(n, timesteps)
     return [@scenario t_xi = rand(1:length(timesteps)-2) s_xi = rand([-1]) probability = 1. /n for i in 1:n]
@@ -115,8 +115,6 @@ objective_value(sp)
 
 od = optimal_decision(sp)
 ##
-#=xi = scenarios(2, 24)
-sp = instantiate(em, [x for x in xi], optimizer = GLPK.Optimizer)=#
 plot_results(sp, pv, wind, demand)
 
 ##
@@ -136,10 +134,12 @@ println("value(u_storage) = $(value(u_storage))")
 
 
 # Second stage
-for s in 1:10
-    println("Objective value in scenario 1: $(objective_value(sp, 1))")
-    println("Optimal recourse in scenario 1: $(optimal_recourse_decision(sp, 1))")
+for s in 1:3
+    #println("Objective value in scenario $s: $(objective_value(sp, s))")
+    println("Optimal recourse in scenario $s: $(optimal_recourse_decision(sp, s))")
     plot_results(sp, pv, wind, demand, scen = s)
 end
 
-## 
+##
+
+plot_results(sp, pv, wind, demand, scen = 1)
