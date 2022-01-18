@@ -11,21 +11,6 @@ using JuMP
 using DataFrames
 using CSV
 
-function plot_res2(sp, pv, w, d; scenarios=[1], stage_1=[:gci, :gco, :storage], stage_2=[:gci2, :gco2])
-    plt = plot(value(sp[1, :u_pv]) .* pv, label="pv")
-    plot!(plt, value(sp[1, :u_wind]) .*wind, label="wind")
-    plot!(plt, demand, label="demand")
-    for var in stage_1
-        plot!(plt, value.(sp[1, var]).axes, value.(sp[1, var]).data, label=string(var))
-    end
-    for s in scenarios
-        for var in stage_2
-            plot!(plt, value.(sp[2, var], s).axes, value.(sp[2, var], s).data, label=string(var))
-        end
-    end
-    plt
-end
-
 ##
 function plot_results(sp, pv, w, d; scen = nothing)
     od = optimal_decision(sp)
@@ -60,9 +45,7 @@ end
 # Global system parameters
 c_i = .03
 c_o = .01
-t_f = 48
-t_s = 1
-timesteps = t_s:t_f
+timesteps = 1:48
 time_scale = 10. *365*24/length(timesteps)
 c_pv = 1000.
 c_wind = 1000.
@@ -90,23 +73,12 @@ Then buy-back B>0, therefore it's associated with price c_i
 =#
 @stochastic_model em begin
     @stage 1 begin
-        # Investments:
         @decision(em, u_pv>=0)
         @decision(em, u_wind>=0)
         @decision(em, u_storage>=0)
-        # Grid connection
         @decision(em, gci[t in timesteps]>=0)
         @decision(em, gco[t in timesteps]>=0)
-        # Storage model
-        @decision(em, storage[t in timesteps])
-        @constraint(em, [t in timesteps], -0.5*u_storage*storage_scale <= sum(storage[1:t]))
-        @constraint(em, [t in timesteps], sum(storage[1:t]) <= 0.5*u_storage*storage_scale)
-        @constraint(em, sum(storage) == 0)
-        # Energy balance
-        @constraint(em, [t in timesteps], 
-        gci[t]-gco[t]+u_pv*pv[t]+u_wind*wind[t]-demand[t]+storage[t]==0) # Energy balance
-        # Investment costs
-        @objective(em, Min, u_pv*c_pv/time_scale+u_wind*c_wind/time_scale+u_storage*c_storage/time_scale + c_i*sum(gci) - c_o*sum(gco))
+        @objective(em, Min, u_pv*c_pv/time_scale+u_wind*c_wind/time_scale+u_storage*c_storage/time_scale+c_i*sum(gci)-c_o*sum(gco))
     end
     @stage 2 begin
         @uncertain t_xi s_xi #t_xi the time of flexibility demand, s_xi - sign (±1 or 0)
@@ -115,43 +87,34 @@ Then buy-back B>0, therefore it's associated with price c_i
         @known(em, u_storage)
         @known(em, gci)
         @known(em, gco)
-        @known(em, storage)
-        # Post event components
-        @recourse(em, gci2[t in t_xi+1:t_f])
-        @recourse(em, gco2[t in t_xi+1:t_f])
-        @recourse(em, sto2[t in timesteps])
-        @constraint(em, [t in timesteps], -0.5*u_storage*storage_scale <= sum(sto2[1:t]))
-        @constraint(em, [t in timesteps], sum(sto2[1:t]) <= 0.5*u_storage*storage_scale)
-        @constraint(em, sum(sto2) == 0)
-
-        # Put storage at time of event into same state
-        @constraint(em, sum(storage[t_s:t_xi-1]) == sum(sto2[t_s:t_xi-1]))
-        
-        #@constraint(em, [t in timesteps], 0 <= sum(sto2[t_xi:t_f] +0.5*u_storage*storage_scale + sum(storage[1:t_xi])))
-        #@constraint(em, [t in timesteps], sum(sto2[t_xi:t_f]) <= 0.5*u_storage*storage_scale)
-        #@constraint(em, sum(sto2) == sum(storage[1:t_xi]))
-        
-        # Event energy balance
-        # The storage and other fast acting components use the recourse variables here.
-        # They provide the balance. Grid connection is not allowed, as we are suporting the grid here. 
-        @constraint(em, gci[t_xi]-gco[t_xi]+u_pv*pv[t_xi]+u_wind*wind[t_xi]-demand[t_xi]+sto2[t_xi]+F*s_xi==0)
-        # Post event energy balance
-        @constraint(em, [t in (t_xi+1):t_f],
-        gci2[t]-gco2[t]+u_pv*pv[t]+u_wind*wind[t]-demand[t]+sto2[t]==0)
-        @objective(em, Min, c_i*sum(gci2[t_xi+1:t_f])-c_o*sum(gco2[t_xi+1:t_f]) - (c_i*sum(gci[t_xi+1:t_f])-c_o*sum(gco[t_xi+1:t_f])) )
+        @recourse(em, storage[t in timesteps])
+        @recourse(em, B[t in timesteps])
+        @constraint(em, [t in timesteps], s_xi*B[t]<=0)
+        @constraint(em, [t in 1:t_xi], B[t]==0)
+        @constraint(em, [t in 1:(t_xi-1)], 
+        gci[t]-gco[t]+u_pv*pv[t]+u_wind*wind[t]-demand[t]+storage[t]==0)
+        @constraint(em, 
+        gci[t_xi]-gco[t_xi]+u_pv*pv[t_xi]+u_wind*wind[t_xi]-demand[t_xi]+storage[t_xi]+F*s_xi==0)
+        @constraint(em, [t in (t_xi+1):length(timesteps)],
+        gci[t]-gco[t]+u_pv*pv[t]+u_wind*wind[t]-demand[t]+storage[t]+B[t]==0)
+        @objective(em, Min, c_i*sum(B))
+        @constraint(em, [t in timesteps], -0.5*u_storage*storage_scale <= sum(storage[1:t]))
+        @constraint(em, [t in timesteps], sum(storage[1:t]) <= 0.5*u_storage*storage_scale)
+        @constraint(em, sum(storage) == 0)
+        @constraint(em, sum(B) == -s_xi* F)
     end
 end
 ## 
 #xi = scenarios(10, timesteps)
-xi_1 = @scenario t_xi = 3 s_xi = -1 probability = 0.5
-xi_2 = @scenario t_xi = 3 s_xi = -1 probability = 0.5
+xi_1 = @scenario t_xi = 2 s_xi = -1 probability = 0.5
+xi_2 = @scenario t_xi = 1 s_xi = -1 probability = 0.5
 xi = scenarios(10, timesteps)
 sp = instantiate(em, xi, optimizer = GLPK.Optimizer)
 ##
 optimize!(sp)
+objective_value(sp)
 
 od = optimal_decision(sp)
-objective_value(sp)
 ##
 plot_results(sp, pv, wind, demand)
 
@@ -181,5 +144,3 @@ end
 ##
 
 plot_results(sp, pv, wind, demand, scen = 1)
-
-ord = optimal_recourse_decision(sp, 1)
