@@ -13,8 +13,8 @@ using CSV
 
 function plot_res2(sp, pv, w, d; scenarios=[1], stage_1=[:gci, :gco, :storage], stage_2=[:gci2, :gco2])
     plt = plot(value(sp[1, :u_pv]) .* pv, label="pv")
-    plot!(plt, value(sp[1, :u_wind]) .*wind, label="wind")
-    plot!(plt, demand, label="demand")
+    plot!(plt, value(sp[1, :u_wind]) .*w, label="wind")
+    plot!(plt, d, label="demand")
     for var in stage_1
         plot!(plt, value.(sp[1, var]).axes, value.(sp[1, var]).data, label=string(var))
     end
@@ -183,3 +183,5 @@ end
 plot_results(sp, pv, wind, demand, scen = 1)
 
 ord = optimal_recourse_decision(sp, 1)
+
+DeterministicEquivalent(sp)
