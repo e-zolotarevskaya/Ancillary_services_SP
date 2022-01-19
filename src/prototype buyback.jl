@@ -12,7 +12,7 @@ using DataFrames
 using CSV
 
 ##
-function plot_results(sp, pv, w, d; scen = nothing)
+function plot_results_bb(sp, pv, w, d; scen = nothing)
     od = optimal_decision(sp)
     t = Int((length(od)-3)/2+3)
     gci = od[4:t]
@@ -116,7 +116,7 @@ objective_value(sp)
 
 od = optimal_decision(sp)
 ##
-plot_results(sp, pv, wind, demand)
+plot_results_bb(sp, pv, wind, demand)
 
 ##
 # Main result
@@ -138,9 +138,9 @@ println("value(u_storage) = $(value(u_storage))")
 for s in 1:3
     #println("Objective value in scenario $s: $(objective_value(sp, s))")
     println("Optimal recourse in scenario $s: $(optimal_recourse_decision(sp, s))")
-    plot_results(sp, pv, wind, demand, scen = s)
+    plot_results_bb(sp, pv, wind, demand, scen = s)
 end
 
 ##
 
-plot_results(sp, pv, wind, demand, scen = 1)
+plot_results_bb(sp, pv, wind, demand, scen = 1)
