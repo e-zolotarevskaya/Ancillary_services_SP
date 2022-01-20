@@ -11,20 +11,32 @@ using JuMP
 using DataFrames
 using CSV
 
-function plot_results(sp, pv, w, d; scenarios=[1], stage_1=[:gci, :gco], stage_2=[:gci2, :gco2])
+function plot_results(sp, pv, w, d; scenarios=[1], stage_1=[:gci, :gco], stage_2=[:gci2, :gco2], debug = false)
     plt_sto = plot() # create separate plot for storage state of charge
     plt = plot(pv .* value(sp[1, :u_pv]), label="pv")
     plot!(plt, w .* value(sp[1, :u_wind]), label="wind")
-    plot!(plt, d, label="demand")
+    plot!(plt, -d, label="demand")
     plot!(plt_sto, value.(sp[1, :storage]).axes, value.(sp[1, :storage]).data, label="global storage charge")
+    if debug
+        print("Maximum value of storage flow = "*string(maximum(value.(sp[1, :storage]).data))*"\n")
+    end
     for var in stage_1
         plot!(plt, value.(sp[1, var]).axes, value.(sp[1, var]).data, label=string(var))
+        if debug
+            print("Maximum value of "*string(var)*" = "*string(maximum(value.(sp[1, var]).data))*"\n")
+        end
     end
     for s in scenarios
         for var in stage_2
             plot!(plt, value.(sp[2, var], s).axes, value.(sp[2, var], s).data, label=string(var)*string(s))
+            if debug
+                print("Maximum value of "*string(var)*" = "*string(maximum(value.(sp[2, var], s).data))*"\n")
+            end
         end
         plot!(plt_sto, value.(sp[2, :sto2], s).axes, value.(sp[2, :sto2], s).data, label=string("stochastic storage charge")*string(s))
+        if debug
+            print("Maximum value of sto2 = "*string(maximum(value.(sp[2, :sto2], s).data))*"\n")
+        end
     end
     display(plot(plt, plt_sto, layout = (2,1)))
 end
@@ -98,7 +110,9 @@ end
         # Put storage at time of event into same state
         @constraint(em, sum(storage[t_s:t_xi-1]) == sum(sto2[t_s:t_xi-1]))
         
-        #=@constraint(em, [t in 1:t_xi-1], sto2[t] == storage[t])
+        #=
+        @recourse(em, sto2[t in t_xi+1:t_f])
+        @constraint(em, [t in 1:t_xi-1], sto2[t] == storage[t])
         @constraint(em, [t in timesteps], 0 <= sum(sto2[t_xi:t_f]) + sum(storage[1:t_xi]))
         @constraint(em, [t in timesteps], sum(sto2[t_xi:t_f]) + sum(storage[1:t_xi]) <= u_storage*storage_scale)
         @constraint(em, sum(sto2) == - sum(storage[1:t_xi]))
@@ -124,7 +138,7 @@ optimize!(sp)
 od = optimal_decision(sp)
 objective_value(sp)
 ##
-plot_results(sp, pv, wind, demand)
+plot_results(sp, pv, wind, demand, debug = true)
 
 ##
 # Main result
