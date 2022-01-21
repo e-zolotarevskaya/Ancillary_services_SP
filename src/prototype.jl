@@ -11,6 +11,7 @@ using JuMP
 using DataFrames
 using CSV
 
+#include("./sampler.jl")
 function plot_results(sp, pv, w, d; scenarios=[1], stage_1=[:gci, :gco], stage_2=[:gci2, :gco2], debug = false)
     plt_sto = plot() # create separate plot for storage state of charge
     plt = plot(pv .* value(sp[1, :u_pv]), label="pv")
@@ -65,74 +66,85 @@ demand = CSV.read("../data/demand_Industriepark.csv", DataFrame)[timesteps, 1]=#
 pv = CSV.read("../data/basic_example.csv", DataFrame)[timesteps.+offset, 3]
 wind = CSV.read("../data/basic_example.csv", DataFrame)[timesteps.+offset, 4]
 demand = CSV.read("../data/basic_example.csv", DataFrame)[timesteps.+offset, 2]
-
 ##
-function scenarios(n, timesteps)
-    return [@scenario t_xi = rand(timesteps[1:end-2]) s_xi = rand([-1, 1]) probability = 1. /n for i in 1:n]
+@define_scenario simple_scenario = begin
+    t_xi::Int64
+    s_xi::Int64
+    @zero begin
+        return simple_scenario(0, 0)
+    end
+    @expectation begin
+        t_xi = Int(floor(sum([probability(s)*s.t_xi for s in scenarios])))
+        s_xi = Int(floor(sum([probability(s)*s.s_xi for s in scenarios])))
+        return simple_scenario(t_xi, s_xi)
+    end
+end
+
+@sampler simple_sampler = begin
+    timesteps::UnitRange{Int64}
+    #n::Int64
+    simple_sampler(timesteps::UnitRange{Int64}) = new(timesteps)
+    
+    @sample simple_scenario begin
+        @parameters timesteps
+        return simple_scenario(rand(timesteps[1:end-2]), rand([-1, 1]))
+    end
 end
 ##
 # Note on signs: s_xi<0 means that energy is requested, s_xi>0 means an additional consumption
-@stochastic_model em begin
+energy_model = @stochastic_model begin 
     @stage 1 begin
         # Investments:
-        @decision(em, 100000 >= u_pv >= 0)
-        @decision(em, 100000 >= u_wind >= 0)
-        @decision(em, 100000 >= u_storage >= 0)
+        @decision(model, 100000 >= u_pv >= 0)
+        @decision(model, 100000 >= u_wind >= 0)
+        @decision(model, 100000 >= u_storage >= 0)
         # Grid connection
-        @decision(em, gci[t in timesteps] >= 0)
-        @decision(em, gco[t in timesteps] >= 0)
+        @decision(model, gci[t in timesteps] >= 0)
+        @decision(model, gco[t in timesteps] >= 0)
         # Storage model
-        @decision(em, storage[t in timesteps])
-        @constraint(em, [t in timesteps], -0.5*u_storage*storage_scale <= sum(storage[t_s:t]))
-        @constraint(em, [t in timesteps], sum(storage[t_s:t]) <= 0.5*u_storage*storage_scale)
-        @constraint(em, sum(storage) == 0)
+        @decision(model, storage[t in timesteps])
+        @constraint(model, [t in timesteps], -0.5*u_storage*storage_scale <= sum(storage[t_s:t]))
+        @constraint(model, [t in timesteps], sum(storage[t_s:t]) <= 0.5*u_storage*storage_scale)
+        @constraint(model, sum(storage) == 0)
         # Energy balance
-        @constraint(em, [t in timesteps], 
+        @constraint(model, [t in timesteps], 
         gci[t]-gco[t]+u_pv*pv[t]+u_wind*wind[t]-demand[t]+storage[t]==0) # Energy balance
         # Investment costs
-        @objective(em, Min, u_pv*c_pv/time_scale+u_wind*c_wind/time_scale+u_storage*c_storage/time_scale+c_i*sum(gci)-c_o*sum(gco))
+        @objective(model, Min, u_pv*c_pv/time_scale+u_wind*c_wind/time_scale+u_storage*c_storage/time_scale+c_i*sum(gci)-c_o*sum(gco))
     end
     @stage 2 begin
-        @uncertain t_xi s_xi #t_xi the time of flexibility demand, s_xi - sign (±1 or 0)
-        @known(em, u_pv)
-        @known(em, u_wind)
-        @known(em, u_storage)
-        @known(em, gci)
-        @known(em, gco)
-        @known(em, storage)
+        @uncertain t_xi s_xi from simple_scenario #t_xi the time of flexibility demand, s_xi - sign (±1 or 0)
+        @known(model, u_pv)
+        @known(model, u_wind)
+        @known(model, u_storage)
+        @known(model, gci)
+        @known(model, gco)
+        @known(model, storage)
         # Post event components
-        @recourse(em, gci2[t in t_xi+1:t_f] >= 0)
-        @recourse(em, gco2[t in t_xi+1:t_f] >= 0)
-        @recourse(em, sto2[t in timesteps])
-        @constraint(em, [t in timesteps], -0.5*u_storage*storage_scale <= sum(sto2[t_s:t]))
-        @constraint(em, [t in timesteps], sum(sto2[t_s:t]) <= 0.5*u_storage*storage_scale)
-        @constraint(em, sum(sto2) == 0)
+        @recourse(model, gci2[t in t_xi+1:t_f] >= 0)
+        @recourse(model, gco2[t in t_xi+1:t_f] >= 0)
+        @recourse(model, sto2[t in timesteps])
+        @constraint(model, [t in timesteps], -0.5*u_storage*storage_scale <= sum(sto2[t_s:t]))
+        @constraint(model, [t in timesteps], sum(sto2[t_s:t]) <= 0.5*u_storage*storage_scale)
+        @constraint(model, sum(sto2) == 0)
 
         # Put storage at time of event into same state
-        @constraint(em, sum(storage[t_s:t_xi-1]) == sum(sto2[t_s:t_xi-1]))
+        @constraint(model, sum(storage[t_s:t_xi-1]) == sum(sto2[t_s:t_xi-1]))
         
-        #=
-        @recourse(em, sto2[t in t_xi+1:t_f])
-        @constraint(em, [t in 1:t_xi-1], sto2[t] == storage[t])
-        @constraint(em, [t in timesteps], 0 <= sum(sto2[t_xi:t_f]) + sum(storage[1:t_xi]))
-        @constraint(em, [t in timesteps], sum(sto2[t_xi:t_f]) + sum(storage[1:t_xi]) <= u_storage*storage_scale)
-        @constraint(em, sum(sto2) == - sum(storage[1:t_xi]))
-        =#
         # Event energy balance
         # The storage and other fast acting components use the recourse variables here.
         # They provide the balance. Grid connection is not allowed, as we are suporting the grid here. 
-        @constraint(em, gci[t_xi]-gco[t_xi]+u_pv*pv[t_xi]+u_wind*wind[t_xi]-demand[t_xi]+sto2[t_xi]+F*s_xi==0)
+        @constraint(model, gci[t_xi]-gco[t_xi]+u_pv*pv[t_xi]+u_wind*wind[t_xi]-demand[t_xi]+sto2[t_xi]+F*s_xi==0)
         # Post event energy balance
-        @constraint(em, [t in (t_xi+1):t_f],
+        @constraint(model, [t in (t_xi+1):t_f],
         gci2[t]-gco2[t]+u_pv*pv[t]+u_wind*wind[t]-demand[t]+sto2[t]==0)
-        @objective(em, Min, c_i*sum(gci2[t_xi+1:t_f])-c_o*sum(gco2[t_xi+1:t_f]) - (c_i*sum(gci[t_xi+1:t_f])-c_o*sum(gco[t_xi+1:t_f])))
+        @objective(model, Min, c_i*sum(gci2[t_xi+1:t_f])-c_o*sum(gco2[t_xi+1:t_f]) - (c_i*sum(gci[t_xi+1:t_f])-c_o*sum(gco[t_xi+1:t_f])))
     end
 end
 ## 
-#xi_1 = @scenario t_xi = 5 s_xi = -1 probability = 0.5
-#xi_2 = @scenario t_xi = 3 s_xi = -1 probability = 0.5 #Int(floor((t_f+t_s)/2))
-xi = scenarios(10, t_s:t_f)
-sp = instantiate(em, xi, optimizer = GLPK.Optimizer)
+s = simple_sampler(timesteps)
+
+sp = instantiate(energy_model, s, 5, optimizer = GLPK.Optimizer)
 ##
 optimize!(sp)
 
@@ -141,14 +153,6 @@ objective_value(sp)
 ##
 plot_results(sp, pv, wind, demand, debug = true)
 
-for t in timesteps
-    xi_t = @scenario t_xi = t s_xi = -1 probability = 1.
-    sp_t = instantiate(em, [xi_t], optimizer = GLPK.Optimizer)
-    optimize!(sp_t)
-    od = optimal_decision(sp_t)
-    print(objective_value(sp_t))
-    print(", t_xi = $t \n")
-end
 ##
 # Main result
 println("Termination status: $(termination_status(sp))")
