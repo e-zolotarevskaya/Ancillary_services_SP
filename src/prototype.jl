@@ -17,7 +17,9 @@ function plot_results(sp, pv, w, d; scenarios=[1], stage_1=[:gci, :gco], stage_2
     plt = plot(pv .* value(sp[1, :u_pv]), label="pv")
     plot!(plt, w .* value(sp[1, :u_wind]), label="wind")
     plot!(plt, -d, label="demand")
-    plot!(plt_sto, value.(sp[1, :storage]).axes, value.(sp[1, :storage]).data, label="global storage charge")
+    stor_flow = value.(sp[1, :storage]).data
+    stor_charge = [sum(stor_flow[1:t]) for t in value.(sp[1, :storage]).axes[1]] .+ 0.5*value(sp[1, :u_storage])
+    plot!(plt_sto, value.(sp[1, :storage]).axes, stor_charge, label="global storage charge")
     if debug
         print("Maximum value of storage flow = "*string(maximum(value.(sp[1, :storage]).data))*"\n")
     end
@@ -34,7 +36,9 @@ function plot_results(sp, pv, w, d; scenarios=[1], stage_1=[:gci, :gco], stage_2
                 print("Maximum value of "*string(var)*" = "*string(maximum(value.(sp[2, var], s).data))*"\n")
             end
         end
-        plot!(plt_sto, value.(sp[2, :sto2], s).axes, value.(sp[2, :sto2], s).data, label=string("stochastic storage charge")*string(s))
+        stor_flow = value.(sp[2, :sto2], s).data
+        stor_charge = [sum(stor_flow[1:t]) for t in value.(sp[2, :sto2], s).axes[1]] .+ 0.5*value(sp[1, :u_storage])
+        plot!(plt_sto, value.(sp[2, :sto2], s).axes, stor_charge, label=string("stochastic storage charge")*string(s))
         if debug
             print("Maximum value of sto2 = "*string(maximum(value.(sp[2, :sto2], s).data))*"\n")
         end
