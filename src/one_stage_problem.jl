@@ -30,15 +30,21 @@ demand = CSV.read("../data/demand_Industriepark.csv", DataFrame)[timesteps, 1]
 wind = CSV.read("../data/wind_Karholz.csv", DataFrame)[timesteps, 1]
 pv = CSV.read("../data/pv_Halle18.csv", DataFrame)[timesteps, 1]
 
+#heatsystem demand assumption
+heatdemand = [100, 100, 100]
+
 #Global system parameter 
 c_i = .10 
 c_o = .01
 c_w = 1000.
 c_pv = 1000.
-c_b = 400.
+c_storage = 400.
+#heatsystem
+c_heatpump = 100
+
 
 time_scale = 10. *365*24/length(timesteps)
-b_scale = 1
+storage_scale = 1
 
 
 ##midday without ancillary service 
@@ -57,12 +63,21 @@ m = Model(Cbc.Optimizer)
 @variable(m, gci[t in timesteps]>=0)
 @variable(m, gco[t in timesteps]>=0)
 @variable(m, storage[t in timesteps])
+#variable heatsystem
+@variable(m, 0 <= u_heatpump)
+#@variable(m, 0 <= heatstorage)
+@variable(m, heatpumpflow[t in timesteps])
+@variable(m, z[t in timesteps], Bin)
 
 #energy balance
-@constraint(m,[t in timesteps], gci[t]-gco[t]+u_pv*pv[t]+u_w*wind[t]-demand[t]+storage[t]==0)
+@constraint(m,[t in timesteps], gci[t]-gco[t]+u_pv*pv[t]+u_w*wind[t]-demand[t]+storage[t]==0) 
+#without heat storage:  -heatdemand[t]* Coefficient of Performance (COP) from heatpump
+#with heat storage: -(heatdemand[t]+heatstorage[t])
 
 #objective function
 @objective(m, Min, c_pv/time_scale*u_pv + c_w/time_scale*u_w + u_storage*c_storage/time_scale + c_i*sum(gci) - c_o*sum(gco))
+
+
 
 #defining battary constraint
 #@constraint(m, [t in timesteps], -0.5*u_b*b_scale <= sum(b[1:t]))
@@ -73,6 +88,11 @@ m = Model(Cbc.Optimizer)
 @constraint(m, [t in timesteps], sum(storage[1:t]) <= 0.5*u_storage*storage_scale)
 @constraint(m, sum(storage) == 0)
 
+#heatstorage constraints like in battary storage
+
+#defining heatpump constraint, with binary vaiable z
+#@constraint(m, [t in timesteps], heatdemand[t] <= 1000 * (1 - z[t]) )
+#@constraint(m, [t in timesteps], -heatpumpflow[t] * 1.1 + heatdemand[t]  == 1000*z[t])
 
 print(m)
 
@@ -82,4 +102,5 @@ println("Objective value: ", getobjectivevalue(m))
 println("u_pv = ", getvalue(u_pv))
 println("u_w = ", getvalue(u_w))
 println("u_storage = ", getvalue(u_storage))
+println("u_heatpump = ", getvalue(u_heatpump))
 ##
