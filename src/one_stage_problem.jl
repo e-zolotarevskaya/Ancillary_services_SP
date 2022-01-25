@@ -38,7 +38,7 @@ fill!(heatdemand, 100)
 c_i = .10 
 c_o = .01
 c_w = 1000.
-c_pv = 2.
+c_pv = 1000.
 c_storage = 400.
 #heatsystem
 c_heatstorage = 100
@@ -79,6 +79,10 @@ m = Model(Cbc.Optimizer)
 #objective function
 @objective(m, Min, c_pv/time_scale*u_pv + c_w/time_scale*u_w + u_storage*c_storage/time_scale + c_i*sum(gci) - c_o*sum(gco)) + + u_heatstorage*c_heatstorage/time_scale
 
+#constraint for budget: 20.000
+@constraint(m, u_pv + u_w + u_storage + u_heatstorage <= 20000)
+
+
 #defining battary constraint
 #@constraint(m, [t in timesteps], -0.5*u_b*b_scale <= sum(b[1:t]))
 #@constraint(m, [t in timesteps], sum(b[1:t]) <= 0.5*u_b*b_scale)
@@ -90,8 +94,8 @@ m = Model(Cbc.Optimizer)
 
 #heatstorage constraints like in battary storage
 @constraint(m, [t in timesteps], heatpumpflow[t] == heatdemand[t] + heatstorage[t])
-@constraint(m, [t in timesteps], u_heatstorage <= sum(heatstorage[1:t]))
-@constraint(m, [t in timesteps], sum(heatstorage[1:t]) <= u_heatstorage)
+@constraint(m, [t in timesteps], 0 <= sum(heatstorage[1:t])+ 0.5 * u_heatstorage)
+@constraint(m, [t in timesteps], sum(heatstorage[1:t]) <= 0.5 * u_heatstorage)
 @constraint(m, [t in timesteps], sum(heatstorage) == 0)
 
 #defining heatpump constraint, with binary vaiable z
@@ -107,4 +111,5 @@ println("u_pv = ", getvalue(u_pv))
 println("u_w = ", getvalue(u_w))
 println("u_storage = ", getvalue(u_storage))
 println("u_heatstorage = ", getvalue(u_heatstorage))
+println("gci =", getvalue(sum(gci))
 ##
