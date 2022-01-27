@@ -10,6 +10,8 @@ using Plots
 using JuMP
 using DataFrames
 using CSV
+using LShaped
+using Cbc
 
 #include("./sampler.jl")
 function plot_results(sp, pv, w, d; scenarios=[1], stage_1=[:gci, :gco], stage_2=[:gci2, :gco2], debug = false)
@@ -31,10 +33,10 @@ function plot_results(sp, pv, w, d; scenarios=[1], stage_1=[:gci, :gco], stage_2
     end
     for s in scenarios
         for var in stage_2
-            plot!(plt, value.(sp[2, var], s).axes, value.(sp[2, var], s).data, label=string(var)*string(s))
             if debug
                 print("Maximum value of "*string(var)*" = "*string(maximum(value.(sp[2, var], s).data))*"\n")
             end
+            plot!(plt, value.(sp[2, var], s).axes, value.(sp[2, var], s).data, label=string(var)*string(s))
         end
         stor_flow = value.(sp[2, :sto2], s).data
         stor_charge = [sum(stor_flow[1:t]) for t in value.(sp[2, :sto2], s).axes[1]] .+ 0.5*value(sp[1, :u_storage])
@@ -125,16 +127,22 @@ energy_model = @stochastic_model begin
         @known(model, gco)
         @known(model, storage)
         # Post event components
-        @recourse(model, gci2[t in t_xi+1:t_f] >= 0)
-        @recourse(model, gco2[t in t_xi+1:t_f] >= 0)
+        @recourse(model, gci2[t in t_s:t_f] >= 0)
+        @recourse(model, gco2[t in t_s:t_f] >= 0)
         @recourse(model, sto2[t in timesteps])
+        @constraint(model, [t in t_s:t_xi], gci[t] == gci2[t])
+        @constraint(model, [t in t_s:t_xi], gco[t] == gco2[t])
+
         @constraint(model, [t in timesteps], -0.5*u_storage*storage_scale <= sum(sto2[t_s:t]))
         @constraint(model, [t in timesteps], sum(sto2[t_s:t]) <= 0.5*u_storage*storage_scale)
+
+        @constraint(model, [t in timesteps], -u_storage*storage_scale <= sto2[t])
+        @constraint(model, [t in timesteps], u_storage*storage_scale >= sto2[t])
         @constraint(model, sum(sto2) == 0)
 
         # Put storage at time of event into same state
-        @constraint(model, sum(storage[t_s:t_xi-1]) == sum(sto2[t_s:t_xi-1]))
-        
+        #@constraint(model, sum(storage[t_s:t_xi-1]) == sum(sto2[t_s:t_xi-1]))
+        @constraint(model, [t in t_s:(t_xi-1)], storage[t] == sto2[t])
         # Event energy balance
         # The storage and other fast acting components use the recourse variables here.
         # They provide the balance. Grid connection is not allowed, as we are suporting the grid here. 
@@ -148,14 +156,14 @@ end
 ## 
 s = simple_sampler(timesteps)
 
-sp = instantiate(energy_model, s, 5, optimizer = GLPK.Optimizer)
+sp = instantiate(energy_model, s, 10, optimizer = Cbc.Optimizer)
 ##
 optimize!(sp)
 
 od = optimal_decision(sp)
 objective_value(sp)
 ##
-plot_results(sp, pv, wind, demand, debug = true)
+plot_results(sp, pv, wind, demand, debug = true, scenarios = 1:5)
 
 ##
 # Main result
@@ -182,4 +190,9 @@ end
 
 ##
 
-plot_results(sp, pv, wind, demand, scenarios = 1:2)
+plot_results(sp, pv, wind, demand, scenarios = [3], debug = true)
+
+scen = scenarios(sp)
+print(scen)
+
+value.(sp[2, :gci2], 3).data
