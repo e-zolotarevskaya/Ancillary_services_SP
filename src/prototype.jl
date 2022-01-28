@@ -136,8 +136,6 @@ energy_model = @stochastic_model begin
         @constraint(model, [t in timesteps], -0.5*u_storage*storage_scale <= sum(sto2[t_s:t]))
         @constraint(model, [t in timesteps], sum(sto2[t_s:t]) <= 0.5*u_storage*storage_scale)
 
-        @constraint(model, [t in timesteps], -u_storage*storage_scale <= sto2[t])
-        @constraint(model, [t in timesteps], u_storage*storage_scale >= sto2[t])
         @constraint(model, sum(sto2) == 0)
 
         # Put storage at time of event into same state
@@ -194,5 +192,3 @@ plot_results(sp, pv, wind, demand, scenarios = [3], debug = true)
 
 scen = scenarios(sp)
 print(scen)
-
-value.(sp[2, :gci2], 3).data
