@@ -10,7 +10,6 @@ using Plots
 using JuMP
 using DataFrames
 using CSV
-using LShaped
 using Cbc
 
 #include("./sampler.jl")
@@ -69,9 +68,9 @@ storage_scale = 1.
 #=pv = CSV.read("../data/pv_Halle18.csv", DataFrame)[timesteps, 1]
 wind = CSV.read("../data/wind_Karholz.csv", DataFrame)[timesteps, 1]
 demand = CSV.read("../data/demand_Industriepark.csv", DataFrame)[timesteps, 1]=#
-pv = CSV.read("../data/basic_example.csv", DataFrame)[timesteps.+offset, 3]
-wind = CSV.read("../data/basic_example.csv", DataFrame)[timesteps.+offset, 4]
-demand = CSV.read("../data/basic_example.csv", DataFrame)[timesteps.+offset, 2]
+pv = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 3]
+wind = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 4]
+demand = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 2]
 ##
 @define_scenario simple_scenario = begin
     t_xi::Int64
