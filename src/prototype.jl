@@ -80,11 +80,13 @@ energy_model = @stochastic_model begin
             c_pv = 100.
             c_wind = 1000.
             c_storage = 100.
+            inv_budget = 200000.
         end
         # Investments:
-        @decision(model, 100000 >= u_pv >= 0)
-        @decision(model, 100000 >= u_wind >= 0)
-        @decision(model, 100000 >= u_storage >= 0)
+        @decision(model, u_pv >= 0)
+        @decision(model, u_wind >= 0)
+        @decision(model, u_storage >= 0)
+        @constraint(model, u_pv+u_wind+u_storage<=inv_budget)
         # Grid connection
         @decision(model, gci[t in timesteps] >= 0)
         @decision(model, gco[t in timesteps] >= 0)
@@ -155,7 +157,7 @@ demand = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 2]
 # 
 s = simple_sampler(timesteps)
 ##
-sp = instantiate(energy_model, s, 10, optimizer = Cbc.Optimizer)
+sp = instantiate(energy_model, s, 10, c_wind = 2000., optimizer = Cbc.Optimizer)
 ##
 optimize!(sp)
 
