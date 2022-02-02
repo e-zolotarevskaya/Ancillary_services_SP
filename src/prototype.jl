@@ -115,7 +115,7 @@ energy_model = @stochastic_model begin
         @constraint(model, [t in timesteps], 
         gci[t]-gco[t]+u_pv*pv[t]+u_wind*wind[t]-demand[t]+storage[t]==0) # Energy balance
         # Investment costs
-        @objective(model, Min, u_pv*c_pv/time_scale+u_wind*c_wind/time_scale+u_storage*c_storage/time_scale+c_i*sum(gci)-c_o*sum(gco))
+        @objective(model, Min, (u_pv*c_pv+u_wind*c_wind+u_storage*c_storage)/time_scale)
     end
     @stage 2 begin
         @uncertain t_xi s_xi from simple_scenario #t_xi the time of flexibility demand, s_xi - sign (±1 or 0)
@@ -147,7 +147,7 @@ energy_model = @stochastic_model begin
         # Post event energy balance
         @constraint(model, [t in (t_xi+1):t_f],
         gci2[t]-gco2[t]+u_pv*pv[t]+u_wind*wind[t]-demand[t]+sto2[t]==0)
-        @objective(model, Min, c_i*sum(gci2[t_xi+1:t_f])-c_o*sum(gco2[t_xi+1:t_f]) - (c_i*sum(gci[t_xi+1:t_f])-c_o*sum(gco[t_xi+1:t_f])))
+        @objective(model, Min, c_i*sum(gci2)-c_o*sum(gco2))
     end
 end
 ## 
