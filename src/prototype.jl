@@ -19,7 +19,7 @@ function plot_results(sp, pv, w, d; scenarios=[1], stage_1=[:gci, :gco], stage_2
     plot!(plt, w .* value(sp[1, :u_wind]), label="wind")
     plot!(plt, d, label="demand")
     stor_flow = value.(sp[1, :storage]).data
-    stor_charge = [sum(stor_flow[1:t]) for t in value.(sp[1, :storage]).axes[1]] .+ 0.5*value(sp[1, :u_storage])
+    stor_charge = [-sum(stor_flow[1:t]) for t in value.(sp[1, :storage]).axes[1]] .+ 0.5*value(sp[1, :u_storage])
     plot!(plt_sto, value.(sp[1, :storage]).axes, stor_charge, label="global storage charge")
     if debug
         print("Maximum value of storage flow = "*string(maximum(value.(sp[1, :storage]).data))*"\n")
@@ -38,7 +38,7 @@ function plot_results(sp, pv, w, d; scenarios=[1], stage_1=[:gci, :gco], stage_2
             plot!(plt, value.(sp[2, var], s).axes, value.(sp[2, var], s).data, label=string(var)*string(s))
         end
         stor_flow = value.(sp[2, :sto2], s).data
-        stor_charge = [sum(stor_flow[1:t]) for t in value.(sp[2, :sto2], s).axes[1]] .+ 0.5*value(sp[1, :u_storage])
+        stor_charge = [-sum(stor_flow[1:t]) for t in value.(sp[2, :sto2], s).axes[1]] .+ 0.5*value(sp[1, :u_storage])
         plot!(plt_sto, value.(sp[2, :sto2], s).axes, stor_charge, label=string("stochastic storage charge")*string(s))
         if debug
             print("Maximum value of sto2 = "*string(maximum(value.(sp[2, :sto2], s).data))*"\n")
@@ -80,16 +80,20 @@ energy_model = @stochastic_model begin
             c_pv = 100.
             c_wind = 1000.
             c_storage = 100.
-            inv_budget = 200000.
+            inv_budget = 50000000.
+            flexible_demand = 10000.
         end
         # Investments:
         @decision(model, u_pv >= 0)
         @decision(model, u_wind >= 0)
         @decision(model, u_storage >= 0)
-        @constraint(model, u_pv+u_wind+u_storage<=inv_budget)
+        @constraint(model, c_pv*u_pv+c_wind*u_wind+c_storage*u_storage<=inv_budget)
         # Grid connection
         @decision(model, gci[t in timesteps] >= 0)
         @decision(model, gco[t in timesteps] >= 0)
+        # Flexible demand
+        @decision(model, fl_dem[t in timesteps] >= 0)
+        @constraint(model, sum(fl_dem) == flexible_demand)
         # Storage model
         @decision(model, storage[t in timesteps])
         @constraint(model, [t in timesteps], -0.5*u_storage <= sum(storage[t_s:t]))
@@ -97,7 +101,7 @@ energy_model = @stochastic_model begin
         @constraint(model, sum(storage) == 0)
         # Energy balance
         @constraint(model, [t in timesteps], 
-        gci[t]-gco[t]+u_pv*pv[t]+u_wind*wind[t]-demand[t]+storage[t]==0) # Energy balance
+        gci[t]-gco[t]+u_pv*pv[t]+u_wind*wind[t]-demand[t]-fl_dem[t]+storage[t]==0) # Energy balance
         # Investment costs
         @objective(model, Min, (u_pv*c_pv+u_wind*c_wind+u_storage*c_storage)/time_scale)
     end
@@ -115,6 +119,7 @@ energy_model = @stochastic_model begin
         @known(model, gci)
         @known(model, gco)
         @known(model, storage)
+        @known(model, fl_dem)
         # Post event components
         @recourse(model, gci2[t in t_s:t_f] >= 0)
         @recourse(model, gco2[t in t_s:t_f] >= 0)
@@ -127,23 +132,27 @@ energy_model = @stochastic_model begin
 
         @constraint(model, sum(sto2) == 0)
 
+        #Flexible demand
+        @recourse(model, fl_dem2[t in timesteps]>=0)
+        @constraint(model, [t in t_s:(t_xi-1)], fl_dem[t] == fl_dem2[t])
+        @constraint(model, sum(fl_dem2) == sum(fl_dem))
         # Put storage at time of event into same state
         #@constraint(model, sum(storage[t_s:t_xi-1]) == sum(sto2[t_s:t_xi-1]))
         @constraint(model, [t in t_s:(t_xi-1)], storage[t] == sto2[t])
         # Event energy balance
         # The storage and other fast acting components use the recourse variables here.
         # They provide the balance. Grid connection is not allowed, as we are suporting the grid here. 
-        @constraint(model, gci[t_xi]-gco[t_xi]+u_pv*pv[t_xi]+u_wind*wind[t_xi]-demand[t_xi]+sto2[t_xi]+F*s_xi==0)
+        @constraint(model, gci[t_xi]-gco[t_xi]+u_pv*pv[t_xi]+u_wind*wind[t_xi]-demand[t_xi]-fl_dem2[t_xi] +sto2[t_xi]+F*s_xi==0)
         # Post event energy balance
         @constraint(model, [t in (t_xi+1):t_f],
-        gci2[t]-gco2[t]+u_pv*pv[t]+u_wind*wind[t]-demand[t]+sto2[t]==0)
+        gci2[t]-gco2[t]+u_pv*pv[t]+u_wind*wind[t]-demand[t]-fl_dem2[t]+sto2[t]==0)
         @objective(model, Min, c_i*sum(gci2)-c_o*sum(gco2))
     end
 end
 ## 
 # Define the time interval
 t_s = 1
-t_f = 48
+t_f = 4800
 offset = 2400
 timesteps = t_s:t_f
 
@@ -157,14 +166,16 @@ demand = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 2]
 # 
 s = simple_sampler(timesteps)
 ##
-sp = instantiate(energy_model, s, 10, c_wind = 2000., optimizer = Cbc.Optimizer)
+#c_i = 0.5, c_o = 0.04, c_wind = 10., c_pv = 10., c_storage = 1.
+#xi = [simple_scenario(5,1), simple_scenario(5,-1)]
+sp = instantiate(energy_model, s, 50, optimizer = Cbc.Optimizer)
 ##
 optimize!(sp)
 
 od = optimal_decision(sp)
 objective_value(sp)
 ##
-plot_results(sp, pv, wind, demand, debug = true, scenarios = 1:5)
+plot_results(sp, pv, wind, demand, scenarios = 1:5, stage_1 = [:gci, :gco, :fl_dem], stage_2 = [:gci2, :gco2, :fl_dem2],)
 
 ##
 # Main result
@@ -195,3 +206,5 @@ plot_results(sp, pv, wind, demand, scenarios = [3], debug = true)
 
 scen = scenarios(sp)
 print(scen)
+
+evaluate_decision(sp, od, simple_scenario(5, 1))
