@@ -1,7 +1,7 @@
 cd(@__DIR__)
 using Pkg
 Pkg.activate(".")
-
+##
 using StochasticPrograms
 using GLPK
 using Pipe
@@ -11,45 +11,43 @@ using JuMP
 using DataFrames
 using CSV
 using Cbc
+##
+function plot_results(sp, pv, w, d; s=1, stage_1=[:gci, :gco], stage_2=[:gci2, :gco2], debug = false)
+    plt_sto = plot()
+    plt_invest = plot()
+    plt = plot() # create separate plot for storage state of charge
+    plot!(plt_invest, pv .* value(sp[1, :u_pv]), label="pv")
+    plot!(plt_invest, w .* value(sp[1, :u_wind]), label="wind")
+    plot!(plt_invest, d, label="demand")
+    stor_flow_i = value.(sp[1, :sto_in]).data
+    stor_flow_o = value.(sp[1, :sto_out]).data
 
-#include("./sampler.jl")
-function plot_results(sp, pv, w, d; scenarios=[1], stage_1=[:gci, :gco], stage_2=[:gci2, :gco2], debug = false)
-    for s in scenarios
-        plt_sto = plot()
-        plt = plot() # create separate plot for storage state of charge
-        plot!(plt, pv .* value(sp[1, :u_pv]), label="pv")
-        plot!(plt, w .* value(sp[1, :u_wind]), label="wind")
-        plot!(plt, d, label="demand")
-        stor_flow_i = value.(sp[1, :sto_in]).data
-        stor_flow_o = value.(sp[1, :sto_out]).data
-
-        stor_charge = [-sum(stor_flow_i[1:t])+sum(stor_flow_o[1:t]) for t in value.(sp[1, :sto_in]).axes[1]] .+ 0.5*value(sp[1, :u_storage])
-        plot!(plt_sto, value.(sp[1, :sto_in]).axes, stor_charge, label="global storage charge")
-        if debug
-            #print("Maximum value of storage flow = "*string(maximum(value.(sp[1, :sto_in]).data))*"\n")
-        end
-        for var in stage_1
-            plot!(plt, value.(sp[1, var]).axes, value.(sp[1, var]).data, label=string(var))
-            if debug
-                print("Maximum value of "*string(var)*" = "*string(maximum(value.(sp[1, var]).data))*"\n")
-            end
-        end
-        for var in stage_2
-            if debug
-                print("Maximum value of "*string(var)*" = "*string(maximum(value.(sp[2, var], s).data))*"\n")
-            end
-            plot!(plt, value.(sp[2, var], s).axes, value.(sp[2, var], s).data, label=string(var)*string(s), linestyle=:dash, linewidth=2)
-        end
-        stor_flow_i = value.(sp[2, :sto_in2],s).data
-        stor_flow_o = value.(sp[2, :sto_out2],s).data        
-        stor_charge = [-sum(stor_flow_i[1:t])+sum(stor_flow_o[1:t]) for t in value.(sp[2, :sto_in2], s).axes[1]] .+ 0.5*value(sp[1, :u_storage])
-        plot!(plt_sto, value.(sp[2, :sto_in2], s).axes, stor_charge, label=string("stochastic storage charge")*string(s), linestyle=:dash, linewidth=2)
-        if debug
-            #print("Maximum value of sto2 = "*string(maximum(value.(sp[2, :sto2], s).data))*"\n")
-        end
-        display(plot(plt, plt_sto, layout = (2,1)))
+    stor_charge = [-sum(stor_flow_i[1:t])+sum(stor_flow_o[1:t]) for t in value.(sp[1, :sto_in]).axes[1]] .+ 0.5*value(sp[1, :u_storage])
+    plot!(plt_sto, value.(sp[1, :sto_in]).axes, stor_charge, label="global storage charge")
+    if debug
+        #print("Maximum value of storage flow = "*string(maximum(value.(sp[1, :sto_in]).data))*"\n")
     end
-
+    for var in stage_1
+        plot!(plt, value.(sp[1, var]).axes, value.(sp[1, var]).data, label=string(var))
+        if debug
+            print("Maximum value of "*string(var)*" = "*string(maximum(value.(sp[1, var]).data))*"\n")
+        end
+    end
+    for var in stage_2
+        if debug
+            print("Maximum value of "*string(var)*" = "*string(maximum(value.(sp[2, var], s).data))*"\n")
+        end
+        plot!(plt, value.(sp[2, var], s).axes, value.(sp[2, var], s).data, label=string(var)*string(s), linestyle=:dash, linewidth=2)
+    end
+    stor_flow_i = value.(sp[2, :sto_in2],s).data
+    stor_flow_o = value.(sp[2, :sto_out2],s).data        
+    stor_charge = [-sum(stor_flow_i[1:t])+sum(stor_flow_o[1:t]) for t in value.(sp[2, :sto_in2], s).axes[1]] .+ 0.5*value(sp[1, :u_storage])
+    plot!(plt_sto, value.(sp[2, :sto_in2], s).axes, stor_charge, label=string("stochastic storage charge")*string(s), linestyle=:dash, linewidth=2)
+    if debug
+        #print("Maximum value of sto2 = "*string(maximum(value.(sp[2, :sto2], s).data))*"\n")
+    end
+    display(plot(plt_invest, plt, plt_sto, layout = (3,1)))
+    #print(s)
 end
 
 ##
@@ -82,6 +80,18 @@ t_s = 1
 t_f = 48
 offset = 2400
 timesteps = t_s:t_f
+
+F_range = (100., 200.)
+# Define weather and demand data
+#=pv = CSV.read("../data/pv_Halle18.csv", DataFrame)[timesteps, 1]
+wind = CSV.read("../data/wind_Karholz.csv", DataFrame)[timesteps, 1]
+demand = CSV.read("../data/demand_Industriepark.csv", DataFrame)[timesteps, 1]=#
+pv = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 3]
+wind = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 4]
+demand = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 2]
+# 
+s = simple_sampler(timesteps)
+##
 ##
 # Note on signs: s_xi<0 means that energy is requested, s_xi>0 means an additional consumption
 energy_model = @stochastic_model begin 
@@ -91,7 +101,7 @@ energy_model = @stochastic_model begin
             c_pv = 100.
             c_wind = 1000.
             c_storage = 100.
-            inv_budget = 50000000.
+            inv_budget = 500000000.
             flexible_demand = 0.
         end
         # Investments:
@@ -113,7 +123,7 @@ energy_model = @stochastic_model begin
         @constraint(model, -sum(sto_in)+sum(sto_out) == 0)
         # Energy balance
         @constraint(model, [t in timesteps], 
-        gci[t]-gco[t]+u_pv*pv[t]+u_wind*wind[t]-demand[t]-fl_dem[t]+sto_in[t]-sto_out[t]==0) # Energy balance
+        gci[t]-gco[t]+u_pv*pv[t]+u_wind*wind[t]-demand[t]-fl_dem[t]+sto_in[t]-sto_out[t]==0)
         # Investment costs
         @objective(model, Min, (u_pv*c_pv+u_wind*c_wind+u_storage*c_storage)/time_scale)
     end
@@ -121,8 +131,8 @@ energy_model = @stochastic_model begin
         @parameters begin
             c_i = .03
             c_o = .01
-            #c_flex = .5
-            F = 10.
+            c_flex = .5
+            #F = 10.
             c_sto_op = 0.00001
 
         end
@@ -169,19 +179,7 @@ energy_model = @stochastic_model begin
     end
 end
 ## 
-
-
-# Define weather and demand data
-#=pv = CSV.read("../data/pv_Halle18.csv", DataFrame)[timesteps, 1]
-wind = CSV.read("../data/wind_Karholz.csv", DataFrame)[timesteps, 1]
-demand = CSV.read("../data/demand_Industriepark.csv", DataFrame)[timesteps, 1]=#
-pv = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 3]
-wind = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 4]
-demand = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 2]
-# 
-s = simple_sampler(timesteps)
-##
-#c_i = 0.5, c_o = 0.04, c_wind = 10., c_pv = 10., c_storage = 1.
+#c_i = 0.5, c_o = 0.04, c_wind = 10., c_pv = 10., c_storage = 1. # very expensive grid connection, cheap storage
 #xi = [simple_scenario(5,1), simple_scenario(5,-1)]
 sp = instantiate(energy_model, s, 5, flexible_demand = 10000., F=1000., c_storage = 20., optimizer = Cbc.Optimizer)
 ##
@@ -189,9 +187,14 @@ optimize!(sp)
 
 od = optimal_decision(sp)
 objective_value(sp)
-##
-plot_results(sp, pv, wind, demand, scenarios = 1:5, stage_1 = [:gci, :gco, :fl_dem], stage_2 = [:gci2, :gco2, :fl_dem2],)
 
+##
+#sp = instantiate(energy_model, [simple_scenario(1,0)], F=100., optimizer = Cbc.Optimizer)
+
+##
+for s in 1:5
+    plot_results(sp, pv, wind, demand, s = s, stage_1 = [:gci, :gco, :fl_dem], stage_2 = [:gci2, :gco2, :fl_dem2],)
+end
 ##
 # Main result
 println("Termination status: $(termination_status(sp))")
@@ -212,22 +215,45 @@ println("value(u_storage) = $(value(u_storage))")
 for s in 1:3
     #println("Objective value in scenario $s: $(objective_value(sp, s))")
     println("Optimal recourse in scenario $s: $(optimal_recourse_decision(sp, s))")
-    plot_results(sp, pv, wind, demand, scenarios = [s])
+    plot_results(sp, pv, wind, demand, s = s)
 end
 
 ##
 
-plot_results(sp, pv, wind, demand, scenarios = [3])
-
 scen = scenarios(sp)
 print(scen)
-good_scen = 0
-print(scen)
-for t in timesteps
-    for sign in [-1,1]
-        evaluate_decision(sp, od, simple_scenario(t, sign))
+##
+function test_decision(sp, od, timesteps)
 
+    infeasible_count = 0
+    scen_bad = []
+
+    for t in timesteps
+        for sign in [-1,1]
+            scenario = F_scenario(t,sign,150.)
+            try evaluate_decision(sp, od, scenario);
+            catch e;
+                infeasible_count += 1;
+                append!(scen_bad, [scenario]);
+            end
+            
+        end
     end
+    print(infeasible_count/length(timesteps)/2.)
+    return infeasible_count, scen_bad
 end
+##
 
-evaluate_decision(sp, od, simple_scenario(150, 1))
+count, scen_bad = test_decision(sp, od, timesteps);
+
+print(scen_bad)
+
+EVPI(sp)
+
+VRP(sp)
+
+VSS(sp)
+
+set_optimizer(sp, SAA.Optimizer)
+
+evaluate_decision(sp, od, simple_scenario(1,1))
