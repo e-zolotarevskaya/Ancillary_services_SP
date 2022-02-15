@@ -74,6 +74,33 @@ end
         return simple_scenario(rand(timesteps[1:end-2]), rand([-1, 1]))
     end
 end
+## Try adding F to the scenario
+@define_scenario F_scenario = begin
+    t_xi::Int64
+    s_xi::Int64
+    F_xi::Float64
+    @zero begin
+        return F_scenario(0, 0, 0.)
+    end
+    @expectation begin
+        t_xi = Int(floor(sum([probability(s)*s.t_xi for s in scenarios])))
+        s_xi = Int(floor(sum([probability(s)*s.s_xi for s in scenarios])))
+        F_xi = mean([probability(s)*s.F_xi for s in scenarios])
+        return F_scenario(t_xi, s_xi, F_xi)
+    end
+end
+
+@sampler F_sampler = begin
+    timesteps::UnitRange{Int64}
+    F_range::Tuple{Float64, Float64}
+    #n::Int64
+    F_sampler(timesteps::UnitRange{Int64}, F_range::Tuple{Float64, Float64}) = new(timesteps, F_range)
+    
+    @sample F_scenario begin
+        @parameters timesteps F_range
+        return F_scenario(rand(timesteps[1:end-2]), rand([-1, 1]), F_range[1]+rand()*F_range[2])
+    end
+end
 ##
 # Define the time interval
 t_s = 1
@@ -136,7 +163,7 @@ energy_model = @stochastic_model begin
             c_sto_op = 0.00001
 
         end
-        @uncertain t_xi s_xi from simple_scenario #t_xi the time of flexibility demand, s_xi - sign (±1 or 0)
+        @uncertain t_xi s_xi F_xi from F_scenario #t_xi the time of flexibility demand, s_xi - sign (±1 or 0)
         @known(model, u_pv)
         @known(model, u_wind)
         @known(model, u_storage)
@@ -171,17 +198,19 @@ energy_model = @stochastic_model begin
         # Event energy balance
         # The storage and other fast acting components use the recourse variables here.
         # They provide the balance. Grid connection is not allowed, as we are suporting the grid here. 
-        @constraint(model, gci[t_xi]-gco[t_xi]+u_pv*pv[t_xi]+u_wind*wind[t_xi]-demand[t_xi]-fl_dem2[t_xi] +sto_in2[t_xi]-sto_out2[t_xi]+F*s_xi==0)
+        @constraint(model, gci[t_xi]-gco[t_xi]+u_pv*pv[t_xi]+u_wind*wind[t_xi]-demand[t_xi]-fl_dem2[t_xi] +sto_in2[t_xi]-sto_out2[t_xi]+F_xi*s_xi==0)
         # Post event energy balance
         @constraint(model, [t in (t_xi+1):t_f],
         gci2[t]-gco2[t]+u_pv*pv[t]+u_wind*wind[t]-demand[t]-fl_dem2[t]+sto_in2[t]-sto_out2[t]==0)
-        @objective(model, Min, c_i*sum(gci2)-c_o*sum(gco2)+c_sto_op*sum(sto_in2) + c_sto_op*sum(sto_out2))
+        @objective(model, Min, c_i*sum(gci2)-c_o*sum(gco2)+c_sto_op*sum(sto_in2) + c_sto_op*sum(sto_out2) + c_flex*F_xi)
     end
 end
 ## 
 #c_i = 0.5, c_o = 0.04, c_wind = 10., c_pv = 10., c_storage = 1. # very expensive grid connection, cheap storage
 #xi = [simple_scenario(5,1), simple_scenario(5,-1)]
-sp = instantiate(energy_model, s, 5, flexible_demand = 10000., F=1000., c_storage = 20., optimizer = Cbc.Optimizer)
+
+f_samp = F_sampler(timesteps, F_range)
+sp = instantiate(energy_model, f_samp, 50, c_pv = 200., optimizer = GLPK.Optimizer)
 ##
 optimize!(sp)
 
