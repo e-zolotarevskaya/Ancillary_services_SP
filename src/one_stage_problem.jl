@@ -2,8 +2,6 @@ cd(@__DIR__)
 using Pkg
 Pkg.activate(".")
 
-Pkg.add("Cbc")
-
 using JuMP
 using Cbc
 using Plots
@@ -31,7 +29,7 @@ wind = CSV.read("../data/wind_Karholz.csv", DataFrame)[timesteps, 1]
 pv = CSV.read("../data/pv_Halle18.csv", DataFrame)[timesteps, 1]
 
 #heatsystem demand assumption
-heatdemand = zeros(Int, 24)
+heatdemand = zeros(Int, length(timesteps))
 fill!(heatdemand, 100)
 
 #Global system parameter 
@@ -40,7 +38,8 @@ c_o = .01
 c_w = 1000.
 c_pv = 1000.
 c_storage = 400.
-#heatsystem
+investment_capacity = 20000
+
 c_heatstorage = 100
 
 
@@ -80,7 +79,7 @@ m = Model(Cbc.Optimizer)
 @objective(m, Min, c_pv/time_scale*u_pv + c_w/time_scale*u_w + u_storage*c_storage/time_scale + c_i*sum(gci) - c_o*sum(gco)) + + u_heatstorage*c_heatstorage/time_scale
 
 #constraint for budget: 20.000
-@constraint(m, u_pv + u_w + u_storage + u_heatstorage <= 20000)
+@constraint(m, u_pv + u_w + u_storage + u_heatstorage <= investment_capacity )
 
 
 #defining battary constraint
