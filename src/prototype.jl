@@ -104,7 +104,7 @@ end
 ##
 # Define the time interval
 t_s = 1
-t_f = 48
+t_f = 120
 offset = 2400
 timesteps = t_s:t_f
 
@@ -124,13 +124,15 @@ s = simple_sampler(timesteps)
 energy_model = @stochastic_model begin 
     @stage 1 begin
         @parameters begin
-            time_scale = 10. *365*24/length(timesteps)
+            asset_lifetime = 10.
+            
             c_pv = 100.
             c_wind = 1000.
             c_storage = 100.
             inv_budget = 500000000.
             flexible_demand = 0.
         end
+        time_scale = asset_lifetime *365*24/length(timesteps)
         # Investments:
         @decision(model, u_pv >= 0)
         @decision(model, u_wind >= 0)
@@ -202,7 +204,7 @@ energy_model = @stochastic_model begin
         # Post event energy balance
         @constraint(model, [t in (t_xi+1):t_f],
         gci2[t]-gco2[t]+u_pv*pv[t]+u_wind*wind[t]-demand[t]-fl_dem2[t]+sto_in2[t]-sto_out2[t]==0)
-        @objective(model, Min, c_i*sum(gci2)-c_o*sum(gco2)+c_sto_op*sum(sto_in2) + c_sto_op*sum(sto_out2) + c_flex*F_xi)
+        @objective(model, Min, c_i*sum(gci2)-c_o*sum(gco2)+c_sto_op*sum(sto_in2) + c_sto_op*sum(sto_out2) - c_flex*F_xi)
     end
 end
 ## 
@@ -210,7 +212,18 @@ end
 #xi = [simple_scenario(5,1), simple_scenario(5,-1)]
 
 f_samp = F_sampler(timesteps, F_range)
-sp = instantiate(energy_model, f_samp, 50, c_pv = 200., optimizer = GLPK.Optimizer)
+sp0 = instantiate(energy_model, [F_scenario(1, 0, 0.)], c_pv = 200., flexible_demand = 0., optimizer = GLPK.Optimizer)
+sp = instantiate(energy_model, f_samp, 100, c_pv = 200., flexible_demand = 0., optimizer = GLPK.Optimizer)
+
+##
+optimize!(sp0)
+
+od0 = optimal_decision(sp0)
+objective_value(sp0)
+
+plot_results(sp0, pv, wind, demand, s = 1, stage_1 = [:gci, :gco, :fl_dem], stage_2 = [:gci2, :gco2, :fl_dem2],)
+
+
 ##
 optimize!(sp)
 
@@ -252,7 +265,7 @@ end
 scen = scenarios(sp)
 print(scen)
 ##
-function test_decision(sp, od, timesteps)
+function test_decision(p, decision, timesteps)
 
     infeasible_count = 0
     scen_bad = []
@@ -260,12 +273,15 @@ function test_decision(sp, od, timesteps)
     for t in timesteps
         for sign in [-1,1]
             scenario = F_scenario(t,sign,150.)
-            try evaluate_decision(sp, od, scenario);
+            try evaluate_decision(p, decision, scenario);
             catch e;
                 infeasible_count += 1;
                 append!(scen_bad, [scenario]);
             end
-            
+            if evaluate_decision(p, decision, scenario) == Inf
+                infeasible_count += 1;
+                append!(scen_bad, [scenario]);
+            end
         end
     end
     print(infeasible_count/length(timesteps)/2.)
@@ -273,9 +289,11 @@ function test_decision(sp, od, timesteps)
 end
 ##
 
-count, scen_bad = test_decision(sp, od, timesteps);
+count, scen_bad = test_decision(sp, od, timesteps)
 
-print(scen_bad)
+count0, scen_bad0 = test_decision(sp0, od0, timesteps)
+
+print(scen_bad0)
 
 EVPI(sp)
 
