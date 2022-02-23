@@ -76,7 +76,7 @@ m = Model(Cbc.Optimizer)
 #with heat storage: -(heatdemand[t]+heatstorage[t]) -> heatpumpflow[t]
 
 #objective function
-@objective(m, Min, c_pv/time_scale*u_pv + c_w/time_scale*u_w + u_storage*c_storage/time_scale + c_i*sum(gci) - c_o*sum(gco)) + + u_heatstorage*c_heatstorage/time_scale
+@objective(m, Min, c_pv/time_scale*u_pv + c_w/time_scale*u_w + u_storage*c_storage/time_scale + c_i*sum(gci) - c_o*sum(gco))  + u_heatstorage*c_heatstorage/time_scale
 
 #constraint for budget: 20.000
 @constraint(m, u_pv + u_w + u_storage + u_heatstorage <= investment_capacity )
@@ -86,6 +86,8 @@ m = Model(Cbc.Optimizer)
 #@constraint(m, [t in timesteps], -0.5*u_b*b_scale <= sum(b[1:t]))
 #@constraint(m, [t in timesteps], sum(b[1:t]) <= 0.5*u_b*b_scale)
 #@constraint(m, b[1]==b[length(timesteps)]) 
+
+#battery in the examples
 
 @constraint(m, [t in timesteps], -0.5*u_storage*storage_scale <= sum(storage[1:t]))
 @constraint(m, [t in timesteps], sum(storage[1:t]) <= 0.5*u_storage*storage_scale)
