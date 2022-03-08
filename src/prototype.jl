@@ -104,8 +104,8 @@ end
 ##
 # Define the time interval
 t_s = 1
-t_f = 120
-offset = 2400
+t_f = 168
+offset = 6531
 timesteps = t_s:t_f
 
 F_range = (100., 200.)
@@ -115,7 +115,7 @@ wind = CSV.read("../data/wind_Karholz.csv", DataFrame)[timesteps, 1]
 demand = CSV.read("../data/demand_Industriepark.csv", DataFrame)[timesteps, 1]=#
 pv = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 3]
 wind = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 4]
-demand = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 2]
+demand = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 2] ./80
 # 
 s = simple_sampler(timesteps)
 ##
@@ -193,7 +193,6 @@ energy_model = @stochastic_model begin
         @constraint(model, [t in t_s:(t_xi-1)], fl_dem[t] == fl_dem2[t])
         @constraint(model, sum(fl_dem2) == sum(fl_dem))
         # Put storage at time of event into same state
-        #@constraint(model, sum(storage[t_s:t_xi-1]) == sum(sto2[t_s:t_xi-1]))
         @constraint(model, [t in t_s:(t_xi-1)], sto_in[t] == sto_in2[t])
         @constraint(model, [t in t_s:(t_xi-1)], sto_out[t] == sto_out2[t])
 
@@ -212,23 +211,23 @@ end
 #xi = [simple_scenario(5,1), simple_scenario(5,-1)]
 
 f_samp = F_sampler(timesteps, F_range)
-sp0 = instantiate(energy_model, [F_scenario(1, 0, 0.)], c_pv = 200., flexible_demand = 0., optimizer = GLPK.Optimizer)
-sp = instantiate(energy_model, f_samp, 100, c_pv = 200., flexible_demand = 0., optimizer = GLPK.Optimizer)
+sp0 = instantiate(energy_model, [F_scenario(t_f, 0, 0.)], c_pv = 700., c_wind = 2000., c_i = 0.3, c_o = 0.05, c_storage = 600., flexible_demand = 0., optimizer = GLPK.Optimizer)
 
 ##
 optimize!(sp0)
 
 od0 = optimal_decision(sp0)
-objective_value(sp0)
+ov0 = objective_value(sp0)
+
 
 plot_results(sp0, pv, wind, demand, s = 1, stage_1 = [:gci, :gco, :fl_dem], stage_2 = [:gci2, :gco2, :fl_dem2],)
 
-
 ##
+sp = instantiate(energy_model, f_samp, 100, c_pv = 200., flexible_demand = 0., optimizer = GLPK.Optimizer)
 optimize!(sp)
 
 od = optimal_decision(sp)
-objective_value(sp)
+ov = objective_value(sp)
 
 ##
 #sp = instantiate(energy_model, [simple_scenario(1,0)], F=100., optimizer = Cbc.Optimizer)
@@ -266,41 +265,85 @@ scen = scenarios(sp)
 print(scen)
 ##
 function test_decision(p, decision, timesteps)
-
     infeasible_count = 0
-    scen_bad = []
-
-    for t in timesteps
-        for sign in [-1,1]
+    costs = []
+    #scenario_results = []
+    for sign in [-1,1]
+        for t in timesteps
             scenario = F_scenario(t,sign,150.)
             try evaluate_decision(p, decision, scenario);
             catch e;
                 infeasible_count += 1;
-                append!(scen_bad, [scenario]);
+                append!(costs, Inf)
+                #append!(scenario_results, [Inf, scenario.t_xi, scenario.s_xi, scen.F_xi]);
             end
-            if evaluate_decision(p, decision, scenario) == Inf
-                infeasible_count += 1;
-                append!(scen_bad, [scenario]);
+            append!(costs, evaluate_decision(p, decision, scenario))
+            #append!(scenario_results, [evaluate_decision(p, decision, scenario), scenario.t_xi, scenario.s_xi, scenario.F_xi]);
+        end
+    end
+    N = length(timesteps)
+    print(infeasible_count/N/2.)
+
+    scenario_results = hcat(costs, vcat(timesteps, timesteps), vcat(-1*ones(N), ones(N)))
+    return scenario_results
+end
+
+function test_decision_variate_F(p, decision, timesteps; F_step = 50., F_max = 300.)
+    costs = zeros(2*length(timesteps))
+    F_potential = zeros(2*length(timesteps))
+    #scenario_results = []
+    for Sign in [-1,1]
+        for t in timesteps
+            i = t
+            if Sign == 1
+                i = t + length(timesteps)
+            end
+            for F in F_step:F_step:F_max
+                scenario = F_scenario(t,Sign,F*1.)
+                c = evaluate_decision(p, decision, scenario)
+                if c!= Inf
+                    F_potential[i] = F*Sign
+                    costs[i] = c
+                else
+                    if costs[i] == 0
+                        costs[i] = Inf
+                        F_potential[i] = F*Sign
+                        break
+                    end
+                end
             end
         end
     end
-    print(infeasible_count/length(timesteps)/2.)
-    return infeasible_count, scen_bad
+    print(F_potential)
+    scenario_results = hcat(costs, vcat(timesteps, timesteps), F_potential)
+    return scenario_results
+end
+
+function flexibility_cost(scen_results, ov)
+    T = size(scen_results)[1]
+    positive_flexibility = zeros(Int(T/2))
+    negative_flexibility = zeros(Int(T/2))
+    for i in 1:T
+        if scen_results[i,3] > 0
+            if scen_results[i,1] != Inf && scen_results[i,1] != -Inf
+                positive_flexibility[Int(scen_results[i,2])] = scen_results[i,1] - ov
+            end
+        else
+            if scen_results[i,1] != Inf && scen_results[i,1] != -Inf
+                negative_flexibility[Int(scen_results[i,2])] = scen_results[i,1] - ov
+            end
+        end
+    end
+    return positive_flexibility, negative_flexibility
 end
 ##
 
-count, scen_bad = test_decision(sp, od, timesteps)
+scen_results = test_decision_variate_F(sp, od, timesteps)
 
-count0, scen_bad0 = test_decision(sp0, od0, timesteps)
+scen_results0 = test_decision(sp0, od0, timesteps)
+positive_flexibility, negative_flexibility = flexibility_cost(scen_results, ov0)
 
-print(scen_bad0)
 
-EVPI(sp)
-
-VRP(sp)
-
-VSS(sp)
-
-set_optimizer(sp, SAA.Optimizer)
-
-evaluate_decision(sp, od, simple_scenario(1,1))
+positive_flexibility, negative_flexibility = flexibility_cost(scen_results, ov)
+plot(positive_flexibility, seriestype = :scatter, label = "cost of positive flexibility", xlabel = "t, time of flexibility request", ylabel = "cost, euro")
+plot!(negative_flexibility, seriestype = :scatter, label = "cost of negative flexibility")
