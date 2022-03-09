@@ -53,30 +53,6 @@ function plot_results_r(sp, pv, w, d; s=1, stage_1=[:gci, :gco], stage_2=[:gci2,
     #print(s)
 end
 
-##
-@define_scenario simple_scenario = begin
-    t_xi::Int64
-    s_xi::Int64
-    @zero begin
-        return simple_scenario(0, 0)
-    end
-    @expectation begin
-        t_xi = Int(floor(sum([probability(s)*s.t_xi for s in scenarios])))
-        s_xi = Int(floor(sum([probability(s)*s.s_xi for s in scenarios])))
-        return simple_scenario(t_xi, s_xi)
-    end
-end
-
-@sampler simple_sampler = begin
-    timesteps::UnitRange{Int64}
-    #n::Int64
-    simple_sampler(timesteps::UnitRange{Int64}) = new(timesteps)
-    
-    @sample simple_scenario begin
-        @parameters timesteps
-        return simple_scenario(rand(timesteps[1:end-5]), rand([-1, 1]))
-    end
-end
 ## Try adding F to the scenario
 @define_scenario F_scenario_r = begin
     t_xi::Int64
@@ -108,15 +84,15 @@ end
 ##
 # Define the time interval
 t_s = 1
-t_f = 48
-offset = 2400
-timesteps = t_s:t_f#Base.OneTo(t_f)
+t_f = 168
+offset = 6531
+timesteps = t_s:t_f
 
 F_range = (100., 200.)
 # Define weather and demand data
 pv = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 3]
 wind = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 4]
-demand = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 2]
+demand = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 2] ./80
 
 ##
 # Note on signs: s_xi<0 means that energy is requested, s_xi>0 means an additional consumption
@@ -129,6 +105,9 @@ energy_model_r = @stochastic_model begin
             c_pv = 100.
             c_wind = 1000.
             c_storage = 100.
+            c_sto_op = 0.00001
+            c_i = .03
+            c_o = .01
             # Euro
             inv_budget = 500000000.
             # Shiftable demand, kW
@@ -156,17 +135,17 @@ energy_model_r = @stochastic_model begin
         @constraint(model, [t in timesteps], 
         gci[t]-gco[t]+u_pv*pv[t]+u_wind*wind[t]-demand[t]-fl_dem[t]+sto_in[t]-sto_out[t]==0)
         # Investment costs
-        @objective(model, Min, (u_pv*c_pv+u_wind*c_wind+u_storage*c_storage)/time_scale)
+        @objective(model, Min, (u_pv*c_pv+u_wind*c_wind+u_storage*c_storage)/time_scale + c_i*sum(gci) - c_o*sum(gco)+
+        c_sto_op*sum(sto_in)+c_sto_op*sum(sto_out))
     end
     @stage 2 begin
         @parameters begin
-            c_i = .03
-            c_o = .01
             c_flex = .5
             #F = 10.
-            c_sto_op = 0.00001
             reaction_time = 3
-
+            c_sto_op = 0.00001
+            c_i = .03
+            c_o = .01
         end
         @uncertain t_xi s_xi F_xi from F_scenario_r #t_xi the time of flexibility demand, s_xi - sign (±1 or 0)
         @known(model, u_pv)
@@ -201,15 +180,14 @@ energy_model_r = @stochastic_model begin
         # Post event energy balance
         @constraint(model, [t in (t_xi+1):(t_xi+reaction_time)],
         gci2[t-t_xi]-gco2[t-t_xi]+u_pv*pv[t]+u_wind*wind[t]-demand[t]-fl_dem2[t]+sto_in2[t-t_xi+1]-sto_out2[t-t_xi+1]==0)
-        @objective(model, Min, c_i*sum(gci)-c_o*sum(gco)+
-            c_i*(sum(gci2)-sum(gci[t_xi:(t_xi+reaction_time)]))-c_o*(sum(gco2)-sum(gco[t_xi:(t_xi+reaction_time)]))+
+        @objective(model, Min, c_i*(sum(gci2)-sum(gci[t_xi:(t_xi+reaction_time)]))-c_o*(sum(gco2)-sum(gco[t_xi:(t_xi+reaction_time)]))+
             c_sto_op*sum(sto_in)+c_sto_op*sum(sto_out)-c_flex*F_xi)
     end
 end
 ## 
 reaction_time = 3
 f_samp = F_sampler_r(timesteps, F_range, reaction_time)
-sp0 = instantiate(energy_model_r, [F_scenario_r(5, 1, 10.)], c_pv = 100., reaction_time = reaction_time, flexible_demand = 0., optimizer = GLPK.Optimizer)
+sp0 = instantiate(energy_model_r, [F_scenario_r(5, 1, 10.)], c_pv = 700., c_wind = 2000., c_i = 0.3, c_o = 0.05, c_storage = 600., flexible_demand = 0., reaction_time = reaction_time, optimizer = GLPK.Optimizer)
 
 ##
 optimize!(sp0)
@@ -220,7 +198,7 @@ objective_value(sp0)
 plot_results_r(sp0, pv, wind, demand, s = 1, stage_1 = [:gci, :gco, :fl_dem], stage_2 = [:gci2, :gco2, :fl_dem2],)
 
 ##
-sp = instantiate(energy_model_r, f_samp, 100, c_i = 0.5, c_o = 0.04, c_wind = 100., c_pv = 100., c_storage = 1., flexible_demand = 0., optimizer = GLPK.Optimizer)
+sp = instantiate(energy_model_r, f_samp, 100, c_pv = 700., c_wind = 2000., c_i = 0.3, c_o = 0.05, c_storage = 600., flexible_demand = 0., reaction_time = reaction_time, optimizer = GLPK.Optimizer)
 
 optimize!(sp)
 
