@@ -12,95 +12,10 @@ using DataFrames
 using CSV
 using Cbc
 ##
-function plot_results(sp, pv, w, d; s=1, stage_1=[:gci, :gco], stage_2=[:gci2, :gco2], debug = false)
-    plt_sto = plot()
-    plt_invest = plot()
-    plt = plot() # create separate plot for storage state of charge
-    plot!(plt_invest, pv .* value(sp[1, :u_pv]), label="pv")
-    plot!(plt_invest, w .* value(sp[1, :u_wind]), label="wind")
-    plot!(plt_invest, d, label="demand")
-    stor_flow_i = value.(sp[1, :sto_in]).data
-    stor_flow_o = value.(sp[1, :sto_out]).data
 
-    stor_charge = [-sum(stor_flow_i[1:t])+sum(stor_flow_o[1:t]) for t in value.(sp[1, :sto_in]).axes[1]] .+ 0.5*value(sp[1, :u_storage])
-    plot!(plt_sto, value.(sp[1, :sto_in]).axes, stor_charge, label="global storage charge")
-    if debug
-        #print("Maximum value of storage flow = "*string(maximum(value.(sp[1, :sto_in]).data))*"\n")
-    end
-    for var in stage_1
-        plot!(plt, value.(sp[1, var]).axes, value.(sp[1, var]).data, label=string(var))
-        if debug
-            print("Maximum value of "*string(var)*" = "*string(maximum(value.(sp[1, var]).data))*"\n")
-        end
-    end
-    for var in stage_2
-        if debug
-            print("Maximum value of "*string(var)*" = "*string(maximum(value.(sp[2, var], s).data))*"\n")
-        end
-        plot!(plt, value.(sp[2, var], s).axes, value.(sp[2, var], s).data, label=string(var)*string(s), linestyle=:dash, linewidth=2)
-    end
-    stor_flow_i = value.(sp[2, :sto_in2],s).data
-    stor_flow_o = value.(sp[2, :sto_out2],s).data        
-    stor_charge = [-sum(stor_flow_i[1:t])+sum(stor_flow_o[1:t]) for t in value.(sp[2, :sto_in2], s).axes[1]] .+ 0.5*value(sp[1, :u_storage])
-    plot!(plt_sto, value.(sp[2, :sto_in2], s).axes, stor_charge, label=string("stochastic storage charge")*string(s), linestyle=:dash, linewidth=2)
-    if debug
-        #print("Maximum value of sto2 = "*string(maximum(value.(sp[2, :sto2], s).data))*"\n")
-    end
-    display(plot(plt_invest, plt, plt_sto, layout = (3,1)))
-    #print(s)
-end
+include("samplers.jl")
+include("plot_utils.jl")
 
-##
-@define_scenario simple_scenario = begin
-    t_xi::Int64
-    s_xi::Int64
-    @zero begin
-        return simple_scenario(0, 0)
-    end
-    @expectation begin
-        t_xi = Int(floor(sum([probability(s)*s.t_xi for s in scenarios])))
-        s_xi = Int(floor(sum([probability(s)*s.s_xi for s in scenarios])))
-        return simple_scenario(t_xi, s_xi)
-    end
-end
-
-@sampler simple_sampler = begin
-    timesteps::UnitRange{Int64}
-    #n::Int64
-    simple_sampler(timesteps::UnitRange{Int64}) = new(timesteps)
-    
-    @sample simple_scenario begin
-        @parameters timesteps
-        return simple_scenario(rand(timesteps[1:end-2]), rand([-1, 1]))
-    end
-end
-## Try adding F to the scenario
-@define_scenario F_scenario = begin
-    t_xi::Int64
-    s_xi::Int64
-    F_xi::Float64
-    @zero begin
-        return F_scenario(0, 0, 0.)
-    end
-    @expectation begin
-        t_xi = Int(floor(sum([probability(s)*s.t_xi for s in scenarios])))
-        s_xi = Int(floor(sum([probability(s)*s.s_xi for s in scenarios])))
-        F_xi = mean([probability(s)*s.F_xi for s in scenarios])
-        return F_scenario(t_xi, s_xi, F_xi)
-    end
-end
-
-@sampler F_sampler = begin
-    timesteps::UnitRange{Int64}
-    F_range::Tuple{Float64, Float64}
-    #n::Int64
-    F_sampler(timesteps::UnitRange{Int64}, F_range::Tuple{Float64, Float64}) = new(timesteps, F_range)
-    
-    @sample F_scenario begin
-        @parameters timesteps F_range
-        return F_scenario(rand(timesteps[1:end-2]), rand([-1, 1]), F_range[1]+rand()*F_range[2])
-    end
-end
 ##
 # Define the time interval
 t_s = 1
@@ -109,16 +24,11 @@ offset = 6531
 timesteps = t_s:t_f
 
 F_range = (100., 200.)
+f_samp = F_sampler(timesteps, F_range)
 # Define weather and demand data
-#=pv = CSV.read("../data/pv_Halle18.csv", DataFrame)[timesteps, 1]
-wind = CSV.read("../data/wind_Karholz.csv", DataFrame)[timesteps, 1]
-demand = CSV.read("../data/demand_Industriepark.csv", DataFrame)[timesteps, 1]=#
 pv = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 3]
 wind = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 4]
 demand = CSV.read("../basic_example.csv", DataFrame)[timesteps.+offset, 2] ./80
-# 
-s = simple_sampler(timesteps)
-##
 ##
 # Note on signs: s_xi<0 means that energy is requested, s_xi>0 means an additional consumption
 energy_model = @stochastic_model begin 
@@ -210,10 +120,8 @@ end
 #c_i = 0.5, c_o = 0.04, c_wind = 10., c_pv = 10., c_storage = 1. # very expensive grid connection, cheap storage
 #xi = [simple_scenario(5,1), simple_scenario(5,-1)]
 
-f_samp = F_sampler(timesteps, F_range)
 sp0 = instantiate(energy_model, [F_scenario(t_f, 0, 0.)], c_pv = 700., c_wind = 2000., c_i = 0.3, c_o = 0.05, c_storage = 600., flexible_demand = 0., optimizer = GLPK.Optimizer)
 
-##
 optimize!(sp0)
 
 od0 = optimal_decision(sp0)
@@ -223,7 +131,7 @@ ov0 = objective_value(sp0)
 plot_results(sp0, pv, wind, demand, s = 1, stage_1 = [:gci, :gco, :fl_dem], stage_2 = [:gci2, :gco2, :fl_dem2],)
 
 ##
-sp = instantiate(energy_model, f_samp, 100, c_pv = 200., flexible_demand = 0., optimizer = GLPK.Optimizer)
+sp = instantiate(energy_model, f_samp, 100,  c_pv = 700., c_wind = 2000., c_i = 0.3, c_o = 0.05, c_storage = 600., flexible_demand = 0., optimizer = GLPK.Optimizer)
 optimize!(sp)
 
 od = optimal_decision(sp)
@@ -254,8 +162,8 @@ println("value(u_storage) = $(value(u_storage))")
 
 # Second stage
 for s in 1:3
-    #println("Objective value in scenario $s: $(objective_value(sp, s))")
-    println("Optimal recourse in scenario $s: $(optimal_recourse_decision(sp, s))")
+    println("Objective value in scenario $s: $(objective_value(sp, s))")
+    #println("Optimal recourse in scenario $s: $(optimal_recourse_decision(sp, s))")
     plot_results(sp, pv, wind, demand, s = s)
 end
 
@@ -319,31 +227,33 @@ function test_decision_variate_F(p, decision, timesteps; F_step = 50., F_max = 3
     return scenario_results
 end
 
-function flexibility_cost(scen_results, ov)
-    T = size(scen_results)[1]
-    positive_flexibility = zeros(Int(T/2))
-    negative_flexibility = zeros(Int(T/2))
-    for i in 1:T
-        if scen_results[i,3] > 0
-            if scen_results[i,1] != Inf && scen_results[i,1] != -Inf
-                positive_flexibility[Int(scen_results[i,2])] = scen_results[i,1] - ov
-            end
-        else
-            if scen_results[i,1] != Inf && scen_results[i,1] != -Inf
-                negative_flexibility[Int(scen_results[i,2])] = scen_results[i,1] - ov
-            end
-        end
-    end
-    return positive_flexibility, negative_flexibility
-end
 ##
 
 scen_results = test_decision_variate_F(sp, od, timesteps)
 
-scen_results0 = test_decision(sp0, od0, timesteps)
-positive_flexibility, negative_flexibility = flexibility_cost(scen_results, ov0)
+scen_results0 = test_decision_variate_F(sp0, od0, timesteps)
+
+positive_flexibility, negative_flexibility, positive_potential, negative_potential = plot_flexibility(scen_results0, ov0)
+
+plot_flexibility_cost(scen_results0, ov0)
 
 
-positive_flexibility, negative_flexibility = flexibility_cost(scen_results, ov)
-plot(positive_flexibility, seriestype = :scatter, label = "cost of positive flexibility", xlabel = "t, time of flexibility request", ylabel = "cost, euro")
-plot!(negative_flexibility, seriestype = :scatter, label = "cost of negative flexibility")
+plot(positive_potential)
+plot!(negative_potential)
+
+
+
+plot_flexibility(scen_results, ov0)
+
+plot_flexibility(scen_results0, ov0)
+
+##
+scen_results = test_decision_variate_F(sp, od, timesteps, F_step = 300., F_max = 3000.)
+
+plt = plot()
+plot!(plt, positive_flexibility./positive_potential, label = "price of positive flexibility")
+plot!(plt, negative_flexibility./negative_potential, label = "price of negative flexibility", legend = :topleft)
+plot!(twinx(), positive_potential, fillrange = 0, fillalpha = 0.35, label = "positive flexibility potential", ylimits = (-300., 300.))
+plot!(twinx(), negative_potential, color = :red, fillrange = 0, fillalpha = 0.35, label = "negative flexibility potential", ylimits = (-300., 300.))
+#display(plot(plt_cost, plt_pot, layout = (2,1)))
+display(plt)
