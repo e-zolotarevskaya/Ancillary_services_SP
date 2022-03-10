@@ -11,6 +11,9 @@ using JuMP
 using DataFrames
 using CSV
 using Cbc
+
+include("samplers.jl")
+include("plot_utils.jl")
 ##
 function plot_results_r(sp, pv, w, d; s=1, stage_1=[:gci, :gco], stage_2=[:gci2, :gco2], debug = false)
     plt_sto = plot()
@@ -54,20 +57,6 @@ function plot_results_r(sp, pv, w, d; s=1, stage_1=[:gci, :gco], stage_2=[:gci2,
 end
 
 ## Try adding F to the scenario
-@define_scenario F_scenario_r = begin
-    t_xi::Int64
-    s_xi::Int64
-    F_xi::Float64
-    @zero begin
-        return F_scenario_r(0, 0, 0.)
-    end
-    @expectation begin
-        t_xi = Int(floor(sum([probability(s)*s.t_xi for s in scenarios])))
-        s_xi = Int(floor(sum([probability(s)*s.s_xi for s in scenarios])))
-        F_xi = mean([probability(s)*s.F_xi for s in scenarios])
-        return F_scenario_r(t_xi, s_xi, F_xi)
-    end
-end
 
 @sampler F_sampler_r = begin
     timesteps::UnitRange{Int64}
@@ -76,9 +65,9 @@ end
     #n::Int64
     F_sampler_r(timesteps::UnitRange{Int64}, F_range::Tuple{Float64, Float64}, reaction_time::Int64) = new(timesteps, F_range, reaction_time)
     
-    @sample F_scenario_r begin
+    @sample F_scenario begin
         @parameters timesteps F_range
-        return F_scenario_r(rand(timesteps[1:end-reaction_time-1]), rand([-1, 1]), F_range[1]+rand()*F_range[2])
+        return F_scenario(rand(timesteps[1:end-reaction_time-1]), rand([-1, 1]), F_range[1]+rand()*F_range[2])
     end
 end
 ##
@@ -147,7 +136,7 @@ energy_model_r = @stochastic_model begin
             c_i = .03
             c_o = .01
         end
-        @uncertain t_xi s_xi F_xi from F_scenario_r #t_xi the time of flexibility demand, s_xi - sign (±1 or 0)
+        @uncertain t_xi s_xi F_xi from F_scenario #t_xi the time of flexibility demand, s_xi - sign (±1 or 0)
         @known(model, u_pv)
         @known(model, u_wind)
         @known(model, u_storage)
@@ -187,10 +176,10 @@ end
 ## 
 reaction_time = 3
 f_samp = F_sampler_r(timesteps, F_range, reaction_time)
-sp0 = instantiate(energy_model_r, [F_scenario_r(5, 1, 10.)], c_pv = 700., c_wind = 2000., c_i = 0.3, c_o = 0.05, c_storage = 600., flexible_demand = 0., reaction_time = reaction_time, optimizer = GLPK.Optimizer)
+@timed sp0 = instantiate(energy_model_r, [F_scenario_r(5, 1, 10.)], c_pv = 700., c_wind = 2000., c_i = 0.3, c_o = 0.05, c_storage = 600., flexible_demand = 0., reaction_time = reaction_time, optimizer = GLPK.Optimizer)
 
 ##
-optimize!(sp0)
+@timed optimize!(sp0)
 
 od0 = optimal_decision(sp0)
 objective_value(sp0)
@@ -198,9 +187,9 @@ objective_value(sp0)
 plot_results_r(sp0, pv, wind, demand, s = 1, stage_1 = [:gci, :gco, :fl_dem], stage_2 = [:gci2, :gco2, :fl_dem2],)
 
 ##
-sp = instantiate(energy_model_r, f_samp, 100, c_pv = 700., c_wind = 2000., c_i = 0.3, c_o = 0.05, c_storage = 600., flexible_demand = 0., reaction_time = reaction_time, optimizer = GLPK.Optimizer)
+@timed sp = instantiate(energy_model_r, f_samp, 100, c_pv = 700., c_wind = 2000., c_i = 0.3, c_o = 0.05, c_storage = 600., flexible_demand = 0., reaction_time = reaction_time, optimizer = GLPK.Optimizer)
 
-optimize!(sp)
+@timed optimize!(sp)
 
 od = optimal_decision(sp)
 objective_value(sp)
@@ -245,7 +234,6 @@ function test_decision(p, decision, timesteps)
     infeasible_count = 0
     costs = []
 
-    #scenario_results = []
 
     for sign in [-1,1]
         for t in timesteps
