@@ -56,25 +56,11 @@ function plot_results_r(sp, pv, w, d; s=1, stage_1=[:gci, :gco], stage_2=[:gci2,
     #print(s)
 end
 
-## Try adding F to the scenario
-
-@sampler F_sampler_r = begin
-    timesteps::UnitRange{Int64}
-    F_range::Tuple{Float64, Float64}
-    reaction_time::Int64
-    #n::Int64
-    F_sampler_r(timesteps::UnitRange{Int64}, F_range::Tuple{Float64, Float64}, reaction_time::Int64) = new(timesteps, F_range, reaction_time)
-    
-    @sample F_scenario begin
-        @parameters timesteps F_range
-        return F_scenario(rand(timesteps[1:end-reaction_time-1]), rand([-1, 1]), F_range[1]+rand()*F_range[2])
-    end
-end
 ##
 # Define the time interval
 t_s = 1
-t_f = 168
-offset = 6531
+t_f = 365*24÷4
+offset = 0
 timesteps = t_s:t_f
 
 F_range = (100., 200.)
@@ -170,14 +156,16 @@ energy_model_r = @stochastic_model begin
         @constraint(model, [t in (t_xi+1):(t_xi+reaction_time)],
         gci2[t-t_xi]-gco2[t-t_xi]+u_pv*pv[t]+u_wind*wind[t]-demand[t]-fl_dem2[t]+sto_in2[t-t_xi+1]-sto_out2[t-t_xi+1]==0)
         @objective(model, Min, c_i*(sum(gci2)-sum(gci[t_xi:(t_xi+reaction_time)]))-c_o*(sum(gco2)-sum(gco[t_xi:(t_xi+reaction_time)]))+
-            c_sto_op*sum(sto_in)+c_sto_op*sum(sto_out)-c_flex*F_xi)
+            c_sto_op*(sum(sto_in2)-sum(sto_in[(t:xi-1):(t_xi+reaction_time)])+sum(sto_out2)-sum(sto_out[(t:xi-1):(t_xi+reaction_time)])))
     end
 end
 ## 
 reaction_time = 3
 f_samp = F_sampler_r(timesteps, F_range, reaction_time)
-@timed sp0 = instantiate(energy_model_r, [F_scenario_r(5, 1, 10.)], c_pv = 700., c_wind = 2000., c_i = 0.3, c_o = 0.05, c_storage = 600., flexible_demand = 0., reaction_time = reaction_time, optimizer = GLPK.Optimizer)
-
+@timed sp0 = instantiate(energy_model_r, [F_scenario(5, 1, 10.)], c_pv = 700., c_wind = 2000., c_i = 0.3, c_o = 0.05, c_storage = 600., flexible_demand = 0., reaction_time = reaction_time, optimizer = LShaped.Optimizer)
+set_optimizer(sp0, LShaped.Optimizer)
+set_optimizer_attribute(sp0, MasterOptimizer(), GLPK.Optimizer)
+set_optimizer_attribute(sp0, SubProblemOptimizer(), GLPK.Optimizer)
 ##
 @timed optimize!(sp0)
 
@@ -187,9 +175,9 @@ objective_value(sp0)
 plot_results_r(sp0, pv, wind, demand, s = 1, stage_1 = [:gci, :gco, :fl_dem], stage_2 = [:gci2, :gco2, :fl_dem2],)
 
 ##
-@timed sp = instantiate(energy_model_r, f_samp, 100, c_pv = 700., c_wind = 2000., c_i = 0.3, c_o = 0.05, c_storage = 600., flexible_demand = 0., reaction_time = reaction_time, optimizer = GLPK.Optimizer)
+@timed sp0 = instantiate(energy_model_r, f_samp, 100, c_pv = 700., c_wind = 2000., c_i = 0.3, c_o = 0.05, c_storage = 600., flexible_demand = 0., reaction_time = reaction_time, optimizer = GLPK.Optimizer)
 
-@timed optimize!(sp)
+@timed optimize!(sp0)
 
 od = optimal_decision(sp)
 objective_value(sp)
@@ -276,3 +264,4 @@ evaluate_decision(sp, od, simple_scenario(1,1))
 
 
 t_xi = scenarios(sp)[3].t_xi
+
