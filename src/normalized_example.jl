@@ -2,10 +2,7 @@ cd(@__DIR__)
 using Pkg
 Pkg.activate(".")
 
-Pkg.add("Pipe")
-Pkg.add("StochasticPrograms")
-Pkg.add("GLPK")
-Pkg.add("Cbc")
+
 ##
 using StochasticPrograms
 using GLPK
