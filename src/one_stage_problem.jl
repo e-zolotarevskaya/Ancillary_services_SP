@@ -12,16 +12,6 @@ using GLPK
 ##
 
 
-##Utility functions 
-#=function clamped_sin(x)
-    return sin(x-8)>0 ? 3. .*sin(x-8) : 0.
-end=#
-#pv = [clamped_sin(x/24. * 2. * pi) for x in timesteps]
-
-#timesteps = 1:24
-#pv = [clamped_sin(x/24. * 2. * pi) for x in timesteps]
-
-
 # Define the time interval and timesteps
 t_s = 1
 t_f = 168
@@ -47,24 +37,18 @@ c_o = .05
 c_w = 2000.
 c_pv = 700.
 c_storage = 600.
-#investment_budget = 1000000
+#investment_budget = 1000000.
 
 #adding heat storage parameters 
-c_heatstorage = 200
-c_heatpump = 10
-COP = 2 #coefficient of perfomance 
+c_heatstorage = 200.
+c_heatpump = 10.
+COP = 2. #coefficient of perfomance 
 
 
 time_scale = 10. *365*24/length(timesteps)
 storage_scale = 1
 
 
-##midday without ancillary service 
-
-#data supply
-#demand = [1164.728, 1182.104, 1194.048]
-#pv = [0.0391025641025641, 0.019230769230769232, 0.023717948717948717]
-#wind = [0.9772296015180265, 0.9276462338090916, 0.9802821549377114]
 
 m = Model(GLPK.Optimizer)
 
@@ -76,7 +60,7 @@ m = Model(GLPK.Optimizer)
 @variable(m, gco[t in timesteps]>=0)
 @variable(m, storage[t in timesteps])
 
-#variable heatsystem
+#variable declaration heatsystem
 @variable(m, 0 <= u_heatpump)
 @variable(m, 0 <= u_heatstorage)
 @variable(m, heatstorage[t in timesteps])
@@ -86,10 +70,10 @@ m = Model(GLPK.Optimizer)
 
 
 #energy balance
-@constraint(m,[t in timesteps], gci[t]-gco[t]+u_pv*pv[t]+u_w*wind[t]-demand[t]+storage[t] - heatpumpflow[t]/COP ==0) #- heatpumpflow[t]/COP 
+@constraint(m,[t in timesteps], gci[t]-gco[t]+u_pv*pv[t]+u_w*wind[t]-demand[t]+storage[t] - heatpumpflow[t]/COP ==0) #add - heatpumpflow[t]/COP 
 
 #objective function
-@objective(m, Min, c_pv/time_scale*u_pv + c_w/time_scale*u_w + u_storage*c_storage/time_scale + c_i*sum(gci) - c_o*sum(gco) + u_heatstorage*c_heatstorage/time_scale + u_heatpump* c_heatpump/time_scale )  #+ u_heatstorage*c_heatstorage/time_scale + u_heatpump* c_heatpump/time_scale
+@objective(m, Min, c_pv/time_scale*u_pv + c_w/time_scale*u_w + u_storage*c_storage/time_scale + c_i*sum(gci) - c_o*sum(gco) + u_heatstorage*c_heatstorage/time_scale + u_heatpump* c_heatpump/time_scale )  #add + u_heatstorage*c_heatstorage/time_scale + u_heatpump* c_heatpump/time_scale
 
 #budget constraint
 #@constraint(m, c_pv*u_pv + c_w*u_w + c_storage*u_storage + c_heatstorage*u_heatstorage + c_heatpump*u_heatpump  <= investment_budget )
@@ -129,6 +113,13 @@ println("gco = ", value.(gco))
 
 ## Additional test code 
 
+##midday without ancillary service 
+
+#data supply
+#demand = [1164.728, 1182.104, 1194.048]
+#pv = [0.0391025641025641, 0.019230769230769232, 0.023717948717948717]
+#wind = [0.9772296015180265, 0.9276462338090916, 0.9802821549377114]
+
 
 ##Utility functions 
 #=function clamped_sin(x)
@@ -139,7 +130,7 @@ end=#
 #timesteps = 1:24
 #pv = [clamped_sin(x/24. * 2. * pi) for x in timesteps]
 
-
+##
 #defining battary constraint
 #@constraint(m, [t in timesteps], -0.5*u_b*b_scale <= sum(b[1:t]))
 #@constraint(m, [t in timesteps], sum(b[1:t]) <= 0.5*u_b*b_scale)
