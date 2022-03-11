@@ -11,7 +11,7 @@ include("plot_utils.jl")
 using DataFrames
 using CSV
 
-timesteps = 1:365*24÷4 # Half year crashes on 16Gb
+timesteps = 1:365*24 ÷ 2
 
 pv = CSV.read("timeseries/basic_example.csv", DataFrame)[timesteps, 3]
 wind = CSV.read("timeseries/basic_example.csv", DataFrame)[timesteps, 4]
@@ -24,6 +24,8 @@ pars = copy(default_es_pars)
 ##
 
 pars[:flexible_demand] = 1000.
+pars[:recovery_time] = 24
+
 es = define_energy_system(pv, wind, demand; p = pars)
 
 ##
@@ -34,7 +36,31 @@ scens = simple_flex_sampler(n, F_max, t_max)
 
 ##
 
-using GLPK
+using Cbc
+# using Clp # Cbc uses Clp under the hood for linear problems, we can call it directly
+
+sp = instantiate(es, scens, optimizer = Cbc.Optimizer)
+
+##
+
+optimize!(sp)
+
+##
+
+println("Objective value: $(objective_value(sp))")
+
+for s in 1:n
+    println("Second stage objective value in scenario $s: $(objective_value(sp, s))")
+end
+
+##
+
+plot_results(sp, pv, wind, demand, s = 8)
+
+##
+
+#=
+## LShaped solver
 
 spL = instantiate(es, scens, optimizer = LShaped.Optimizer)
 
@@ -57,3 +83,4 @@ end
 ##
 
 plot_results(spL, pv, wind, demand, s = 8)
+=#
