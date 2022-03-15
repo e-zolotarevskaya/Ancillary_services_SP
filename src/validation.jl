@@ -126,9 +126,11 @@ energy_model = @stochastic_model begin
         @known(model, gco)
         @known(model, storage)
         # Post event components
-        @recourse(model, gci2[t in t_xi+1:t_f] >= 0)
-        @recourse(model, gco2[t in t_xi+1:t_f] >= 0)
+        @recourse(model, gci2[t in t_s:t_f] >= 0)
+        @recourse(model, gco2[t in t_s:t_f] >= 0)
         @recourse(model, sto2[t in timesteps])
+        @constraint(model, [t in t_s:t_xi], gci[t] == gci2[t])
+        @constraint(model, [t in t_s:t_xi], gco[t] == gco2[t])
         @constraint(model, [t in timesteps], -0.5*u_storage*storage_scale <= sum(sto2[t_s:t]))
         @constraint(model, [t in timesteps], sum(sto2[t_s:t]) <= 0.5*u_storage*storage_scale)
         @constraint(model, sum(sto2) == 0)
@@ -209,13 +211,20 @@ u_storage_opt = value.(sp[1, :u_storage])
 #attention hard coded vector of gci and gco (i did not find the getter function of these vector)
 gci_opt = value.(sp[1, :gci]).data
 gco_opt = value.(sp[1, :gco]).data
-
+sto_opt = value.(sp[1, :storage]).data
 
 
 ##
 # Note on signs: s_xi<0 means that energy is requested, s_xi>0 means an additional consumption
 validation_model = @stochastic_model begin 
     @stage 1 begin
+        @parameters begin
+            time_scale = 10. *365*24/length(timesteps)
+            c_pv = 100.
+            c_wind = 1000.
+            c_storage = 100.
+            inv_budget = 200000.
+        end
         # Investments given 
        
         # Grid connection is given 
@@ -229,17 +238,25 @@ validation_model = @stochastic_model begin
         @constraint(model, [t in timesteps], 
         gci_opt[t]-gco_opt[t]+u_pv_opt*pv[t]+u_wind_opt*wind[t]-demand[t]+storage[t]==0) # Energy balance
         # Investment costs
-        @objective(model, Min, u_pv_opt*c_pv/time_scale+u_wind_opt*c_wind/time_scale+u_storage_opt*c_storage/time_scale+c_i*sum(gci_opt)-c_o*sum(gco_opt))
+        @objective(model, Min, u_pv_opt*c_pv/time_scale+u_wind_opt*c_wind/time_scale+u_storage_opt*c_storage/time_scale)
     end
     @stage 2 begin
+        @parameters begin
+            c_i = .03
+            c_o = .01
+            #c_flex = .5
+            F = 10.
+        end
         @uncertain t_xi s_xi from simple_scenario #t_xi the time of flexibility demand, s_xi - sign (±1 or 0)
         #investemt is given (pv, wind)
         #grid connection is given 
         @known(model, storage)
         # Post event components
-        @recourse(model, gci2[t in t_xi+1:t_f] >= 0)
-        @recourse(model, gco2[t in t_xi+1:t_f] >= 0)
+        @recourse(model, gci2[t in t_s:t_f] >= 0)
+        @recourse(model, gco2[t in t_s:t_f] >= 0)
         @recourse(model, sto2[t in timesteps])
+        @constraint(model, [t in t_s:t_xi], gci_opt[t] == gci2[t])
+        @constraint(model, [t in t_s:t_xi], gco_opt[t] == gco2[t])
         @constraint(model, [t in timesteps], -0.5*u_storage_opt*storage_scale <= sum(sto2[t_s:t]))
         @constraint(model, [t in timesteps], sum(sto2[t_s:t]) <= 0.5*u_storage_opt*storage_scale)
         @constraint(model, sum(sto2) == 0)
@@ -254,7 +271,7 @@ validation_model = @stochastic_model begin
         # Post event energy balance
         @constraint(model, [t in (t_xi+1):t_f],
         gci2[t]-gco2[t]+u_pv_opt*pv[t]+u_wind_opt*wind[t]-demand[t]+sto2[t]==0)
-        @objective(model, Min, c_i*sum(gci2[t_xi+1:t_f])-c_o*sum(gco2[t_xi+1:t_f]))
+        @objective(model, Min, c_i*sum(gci2)-c_o*sum(gco2))
     end
 end
 ## 
@@ -276,6 +293,6 @@ println("Termination status: $(termination_status(sp_rs))")
 println("Objective value: $(objective_value(sp_rs))")
 println("Optimal decision: $(optimal_decision(sp_rs))")
 
-
+plot_results(sp_rs, pv, wind, demand)
 
 
