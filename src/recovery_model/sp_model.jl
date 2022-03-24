@@ -51,13 +51,19 @@ function define_energy_system(pv, wind, demand; p = default_es_pars)
             @decision(model, gco[t in 1:number_of_hours] >= 0)
             # Flexible demand
             @decision(model, fl_dem[t in 1:number_of_hours] >= 0)
-            @constraint(model, sum(fl_dem) == flexible_demand)
+            @decision(model, fl_dem_soc[t in 1:number_of_hours] >= 0)
+            @constraint(model, [t in 1:number_of_hours-1], fl_dem_soc[t+1] == fl_dem_soc[t] - fl_dem[t])
+            @constraint(model, fl_dem_soc[1] == flexible_demand)
+            @constraint(model, fl_dem_soc[number_of_hours] - fl_dem[number_of_hours] == 0)
             # Storage model
             @decision(model, sto_in[t in 1:number_of_hours] >= 0) # into the bus from storage
             @decision(model, sto_out[t in 1:number_of_hours] >= 0)
-            @constraint(model, [t in 1:number_of_hours], -0.5 * u_storage <= -sum(sto_in[1:t]) + sum(sto_out[1:t]))
-            @constraint(model, [t in 1:number_of_hours], -sum(sto_in[1:t]) + sum(sto_out[1:t]) <= 0.5 * u_storage)
-            @constraint(model, -sum(sto_in) + sum(sto_out) == 0)
+            @decision(model, sto_soc[t in 1:number_of_hours] >= 0)
+            @constraint(model, [t in 1:number_of_hours-1], sto_soc[t+1] == sto_soc[t] - sto_out[t] + sto_in[t])
+            @constraint(model, [t in 1:number_of_hours], sto_soc[t] <= u_storage)
+            @constraint(model, sto_soc[1] == u_storage / 2)
+            @constraint(model, sto_soc[number_of_hours] - sto_out[number_of_hours] + sto_in[number_of_hours] == sto_soc[1])
+
             # Energy balance
             @constraint(model, [t in 1:number_of_hours], 
             gci[t] - gco[t] + u_pv * pv[t] + u_wind * wind[t] - demand[t] - fl_dem[t] + sto_in[t] - sto_out[t] == 0)
@@ -72,9 +78,11 @@ function define_energy_system(pv, wind, demand; p = default_es_pars)
                 c_sto_op = c_sto_op
                 c_i = c_i
                 c_o = c_o
+                penalty = 10000
                 
             end
             @uncertain t_xi s_xi F_xi # t_xi the time of flexibility demand, s_xi - sign (±1 or 0)
+            t_xi_final = t_xi + recovery_time - 1
             @known(model, u_pv)
             @known(model, u_wind)
             @known(model, u_storage)
@@ -84,35 +92,42 @@ function define_energy_system(pv, wind, demand; p = default_es_pars)
             @known(model, sto_out)
             @known(model, fl_dem)
             # Post event components
+            # Grid connection
             @recourse(model, gci2[t in 1:recovery_time] >= 0)
             @recourse(model, gco2[t in 1:recovery_time] >= 0)
-            @recourse(model, sto_in2[t in 1:(recovery_time + 1)] >= 0)
-            @recourse(model, sto_out2[t in 1:(recovery_time + 1)] >= 0)
-            @recourse(model, fl_dem2[t in 1:(recovery_time + 1)] >= 0)
-
-            # Storage
-            @constraint(model, [t in 1:(recovery_time + 1)], - 0.5 * u_storage <= - sum(sto_in[1:(t_xi - 1)]) + sum(sto_out[1:(t_xi - 1)]) - sum(sto_in2[1:t]) + sum(sto_out2[1:t]))
-            @constraint(model, [t in 1:(recovery_time + 1)], - sum(sto_in[1:(t_xi - 1)]) + sum(sto_out[1:(t_xi - 1)]) - sum(sto_in2[1:t]) + sum(sto_out2[1:t]) <= 0.5 * u_storage)
-
-            @constraint(model, -sum(sto_in2) + sum(sto_out2) == -sum(sto_in[t_xi:(t_xi + recovery_time)]) + sum(sto_out[t_xi:(t_xi + recovery_time)]))
-
             # Flexible demand
-            @constraint(model, sum(fl_dem2) == sum(fl_dem[t_xi:t_xi + recovery_time]))
+            @recourse(model, fl_dem2[t in 1:recovery_time] >= 0)
+            @recourse(model, fl_dem_soc2[t in 1:recovery_time] >= 0)
+            @constraint(model, [t in 1:recovery_time-1], fl_dem_soc2[t+1] == fl_dem_soc2[t] - fl_dem[t])
+            @constraint(model, fl_dem_soc2[1] == fl_dem_soc[t_xi])
+            @constraint(model, fl_dem_soc2[recovery_time] - fl_dem2[recovery_time] == fl_dem_soc[t_xi+recovery_time])
+            # Storage model
+            @recourse(model, sto_in2[t in 1:recovery_time] >= 0) # into the bus from storage
+            @recourse(model, sto_out2[t in 1:recovery_time] >= 0)
+            @recourse(model, sto_soc2[t in 1:recovery_time] >= 0)
+            @constraint(model, [t in 1:recovery_time-1], sto_soc2[t+1] == sto_soc2[t] - sto_out2[t] + sto_in2[t])
+            @constraint(model, [t in 1:recovery_time], sto_soc[t] <= u_storage)
+            @constraint(model, sto_soc2[1] == sto_soc[t_xi])
+            @constraint(model, sto_soc2[recovery_time] - sto_out2[recovery_time] + sto_in2[recovery_time] == sto_soc[t_xi+recovery_time])
+
+
 
             # Event energy balance
             # The storage and other fast acting components use the recourse variables here.
             # They provide the balance. Grid connection is not allowed, as we are suporting the grid here. 
-            @constraint(model, gci[t_xi] - gco[t_xi] + u_pv * pv[t_xi] + u_wind * wind[t_xi] - demand[t_xi] - fl_dem2[1] + sto_in2[1] - sto_out2[1] + F_xi * s_xi == 0)
+            @constraint(model, gci2[1] - gco2[1] + u_pv * pv[t_xi] + u_wind * wind[t_xi] - demand[t_xi] - fl_dem2[1] + sto_in2[1] - sto_out2[1] + F_xi * s_xi == 0)
+            @constraint(model, gci2[1] == gci[t_xi])
+            @constraint(model, gco2[1] == gco[t_xi])
             # Post event energy balance
-            @constraint(model, [t in 1:recovery_time],
+            @constraint(model, [t in 2:recovery_time],
             gci2[t] - gco2[t]
-            + u_pv * pv[t + t_xi] + u_wind * wind[t + t_xi]
-            - demand[t + t_xi] - fl_dem2[t + 1] 
-            + sto_in2[t + 1] - sto_out2[t + 1] == 0)
+            + u_pv * pv[t + t_xi - 1] + u_wind * wind[t + t_xi - 1]
+            - demand[t + t_xi - 1] - fl_dem2[t]
+            + sto_in2[t] - sto_out2[t] == 0)
             @objective(model, Min,
-            + c_i * (sum(gci2) - sum(gci[(t_xi + 1):(t_xi + recovery_time)]))
-            - c_o * (sum(gco2) - sum(gco[(t_xi + 1):(t_xi + recovery_time)]))
-            + c_sto_op * (sum(sto_in2) + sum(sto_out2) - sum(sto_in[t_xi:(t_xi + recovery_time)]) - sum(sto_out[t_xi:(t_xi + recovery_time)])))
+            + c_i * (sum(gci2) - sum(gci[t_xi:t_xi_final]))
+            - c_o * (sum(gco2) - sum(gco[t_xi:t_xi_final]))
+            + c_sto_op * (sum(sto_in2) + sum(sto_out2) - sum(sto_in[t_xi:t_xi_final]) - sum(sto_out[t_xi:t_xi_final])))
         end
     end
     energy_system

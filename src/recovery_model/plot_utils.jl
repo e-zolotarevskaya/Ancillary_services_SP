@@ -11,7 +11,7 @@ function plot_results(sp, pv, w, d; s=1, stage_1=[:gci, :gco], stage_2=[:gci2, :
     stor_flow_o = value.(sp[1, :sto_out])
     t_xi = scenarios(sp)[s].data.t_xi
     recovery_time = sp.stages[2].parameters[:recovery_time]
-    stor_charge = [-sum(stor_flow_i[1:t])+sum(stor_flow_o[1:t]) for t in 1:length(pv)] .+ 0.5*value(sp[1, :u_storage])
+    stor_charge = value.(sp[1, :sto_soc])
     plot!(plt_sto, 1:length(pv), stor_charge, label="global storage charge")
     if debug
         #print("Maximum value of storage flow = "*string(maximum(value.(sp[1, :sto_in])))*"\n")
@@ -31,10 +31,7 @@ function plot_results(sp, pv, w, d; s=1, stage_1=[:gci, :gco], stage_2=[:gci2, :
     for var in [:gci2, :gco2]
         plot!(plt, (t_xi+1):(t_xi+recovery_time), value.(sp[2, var], s), label=string(var)*string(s), linestyle=:dash, linewidth=2)
     end
-    stor_flow_i2 = value.(sp[2, :sto_in2],s)
-    stor_flow_o2 = value.(sp[2, :sto_out2],s)    
-    stor_charge2 = [-sum(stor_flow_i2[1:t])+sum(stor_flow_o2[1:t]) for t in 1:(recovery_time+1)] .+ stor_charge[t_xi-1]
-    plot!(plt_sto, (t_xi-1):(t_xi+recovery_time), vcat(stor_charge[t_xi-1],stor_charge2), label=string("stochastic storage charge")*string(s), linestyle=:dash, linewidth=2)
+    plot!(plt_sto, (t_xi):(t_xi+recovery_time-1), value.(sp[2, :sto_soc2],s), label=string("stochastic storage charge")*string(s), linestyle=:dash, linewidth=2)
     if debug
         #print("Maximum value of sto2 = "*string(maximum(value.(sp[2, :sto2], s)))*"\n")
     end
