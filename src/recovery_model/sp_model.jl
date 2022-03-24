@@ -106,7 +106,7 @@ function define_energy_system(pv, wind, demand; p = default_es_pars)
             @recourse(model, sto_out2[t in 1:recovery_time] >= 0)
             @recourse(model, sto_soc2[t in 1:recovery_time] >= 0)
             @constraint(model, [t in 1:recovery_time-1], sto_soc2[t+1] == sto_soc2[t] - sto_out2[t] + sto_in2[t])
-            @constraint(model, [t in 1:recovery_time], sto_soc[t] <= u_storage)
+            @constraint(model, [t in 1:recovery_time], sto_soc2[t] <= u_storage)
             @constraint(model, sto_soc2[1] == sto_soc[t_xi])
             @constraint(model, sto_soc2[recovery_time] - sto_out2[recovery_time] + sto_in2[recovery_time] == sto_soc[t_xi+recovery_time])
 

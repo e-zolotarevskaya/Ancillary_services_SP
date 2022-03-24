@@ -28,7 +28,7 @@ pars[:recovery_time] = 24
 pars[:c_storage] = 200.
 pars[:c_pv] = 300.
 pars[:c_wind] = 800.
-pars[:c_sto_op] = 0.
+pars[:c_sto_op] = 0.00001
 
 es = define_energy_system(pv, wind, demand; p = pars)
 
@@ -57,7 +57,7 @@ optimize!(sp)
 
 println("Objective value: $(objective_value(sp))")
 
-println("PV: $(value.(sp[1, :u_pv])) -- Wind: $(value.(sp[1, :u_wind])) -- Battery: $(value.(sp[1, :u_storage]))")
+println("PV: $(round(value.(sp[1, :u_pv]); digits = 2)) -- Wind: $(round(value.(sp[1, :u_wind]); digits = 2)) -- Battery: $(round(value.(sp[1, :u_storage]); digits = 2))")
 
 # for s in 1:minimum((n, 10))
 #     println("Second stage objective value in scenario $s: $(objective_value(sp, s))")
