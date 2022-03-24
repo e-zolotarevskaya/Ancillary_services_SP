@@ -23,9 +23,12 @@ pars = copy(default_es_pars)
 
 ##
 
-pars[:flexible_demand] = 1000.
+using Statistics
+average_hourly_demand = mean(demand)
+
+pars[:flexible_demand] = average_hourly_demand * 100. # Over the year, we have 100 demand hours that are shiftable freely...
 pars[:recovery_time] = 24
-pars[:c_storage] = 200.
+pars[:c_storage] = 100.
 pars[:c_pv] = 300.
 pars[:c_wind] = 800.
 pars[:c_sto_op] = 0.00001
@@ -34,7 +37,7 @@ es = define_energy_system(pv, wind, demand; p = pars)
 
 ##
 n = 100
-F_max = 100.
+F_max = average_hourly_demand * 0.1 # Have ancillary services equal to 10% of our typical demand
 t_max = length(pv) - es.parameters[2].defaults[:recovery_time]
 scens = simple_flex_sampler(n, F_max, t_max)
 
