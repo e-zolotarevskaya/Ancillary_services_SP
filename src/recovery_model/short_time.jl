@@ -74,10 +74,11 @@ println("Heat storage: $(round(value.(sp[1, :u_heat_storage]); digits = 2))")
 
 plot_results(sp, pv, wind, demand, hd = heatdemand, s = 8, stage_1 = [:gci, :gco, :fl_dem], stage_2 = [:gci2, :gco2, :fl_dem2])
 
-plot_difference(sp, s=8)
+plot_difference(sp, s=9)
 
-test_decision(sp, timesteps)
-scen_results = test_decision_variate_F(sp, timesteps, F_step = 500., F_max = 1000.)
+##
+scen_results = test_decision(sp, timesteps)
+scen_results_F = test_decision_variate_F(sp, timesteps, F_step = 500., F_max = 1000.)
 
 plot_flexibility(scen_results, objective_value(sp))
 
