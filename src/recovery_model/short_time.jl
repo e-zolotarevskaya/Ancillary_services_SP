@@ -37,7 +37,7 @@ pars[:c_sto_op] = 0.00001
 
 heatdemand = copy(demand)./300.
 heatdemand0 = zeros(length(demand))
-es = define_energy_system_with_heat(pv, wind, demand, heatdemand; p = pars)
+es = define_energy_system(pv, wind, demand, heatdemand; p = pars)
 
 ##
 n = 100
@@ -72,38 +72,12 @@ println("Heat storage: $(round(value.(sp[1, :u_heat_storage]); digits = 2))")
 
 ##
 
-plot_results(sp, pv, wind, demand, hd = heatdemand, s = 8, stage_1 = [:gci, :gco, :fl_dem], stage_2 = [:gci2, :gco2, :fl_dem2])
+plot_results(sp, pv, wind, demand, hd = heatdemand, s = 8, stage_1 = [:gci, :gco], stage_2 = [:gci2, :gco2])
 
-plot_difference(sp, s=9)
+plot_difference(sp, s=8)
 
 ##
 scen_results = test_decision(sp, timesteps)
 scen_results_F = test_decision_variate_F(sp, timesteps, F_step = 500., F_max = 1000.)
 
 plot_flexibility(scen_results, objective_value(sp))
-
-##
-
-es = define_energy_system(pv, wind, demand; p = pars)
-
-##
-n = 100
-F_max = average_hourly_demand * 0.1 # Have ancillary services equal to 10% of our typical demand
-t_max = length(pv) - es.parameters[2].defaults[:recovery_time]
-scens = simple_flex_sampler(n, F_max, t_max)
-
-##
-
-using Cbc
-
-sp = instantiate(es, scens, optimizer = Cbc.Optimizer)
-
-# using GLPK
-
-# sp = instantiate(es, scens, optimizer = GLPK.Optimizer)
-
-##
-
-optimize!(sp)
-
-plot_results(sp, pv, wind, demand, s = 8, stage_1 = [:gci, :gco, :fl_dem], stage_2 = [:gci2, :gco2, :fl_dem2])
