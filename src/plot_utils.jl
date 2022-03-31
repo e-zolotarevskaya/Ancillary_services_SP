@@ -1,5 +1,5 @@
 
-function plot_results(sp, pv, w, d; s=1, stage_1=[:gci, :gco], stage_2=[:gci2, :gco2], debug = false)
+function plot_results(sp, pv, w, d; s=1, stage_1=[:gci, :gco], stage_2=[:gci2, :gco2])
     plt_sto = plot()
     plt_invest = plot()
     plt = plot() # create separate plot for storage state of charge
@@ -11,28 +11,20 @@ function plot_results(sp, pv, w, d; s=1, stage_1=[:gci, :gco], stage_2=[:gci2, :
 
     stor_charge = [-sum(stor_flow_i[1:t])+sum(stor_flow_o[1:t]) for t in value.(sp[1, :sto_in]).axes[1]] .+ 0.5*value(sp[1, :u_storage])
     plot!(plt_sto, value.(sp[1, :sto_in]).axes, stor_charge, label="global storage charge")
-    if debug
-        #print("Maximum value of storage flow = "*string(maximum(value.(sp[1, :sto_in]).data))*"\n")
-    end
+
     for var in stage_1
         plot!(plt, value.(sp[1, var]).axes, value.(sp[1, var]).data, label=string(var))
-        if debug
-            print("Maximum value of "*string(var)*" = "*string(maximum(value.(sp[1, var]).data))*"\n")
-        end
+
     end
     for var in stage_2
-        if debug
-            print("Maximum value of "*string(var)*" = "*string(maximum(value.(sp[2, var], s).data))*"\n")
-        end
+
         plot!(plt, value.(sp[2, var], s).axes, value.(sp[2, var], s).data, label=string(var)*string(s), linestyle=:dash, linewidth=2)
     end
     stor_flow_i = value.(sp[2, :sto_in2],s).data
     stor_flow_o = value.(sp[2, :sto_out2],s).data        
     stor_charge = [-sum(stor_flow_i[1:t])+sum(stor_flow_o[1:t]) for t in value.(sp[2, :sto_in2], s).axes[1]] .+ 0.5*value(sp[1, :u_storage])
-    plot!(plt_sto, value.(sp[2, :sto_in2], s).axes, stor_charge, label=string("stochastic storage charge")*string(s), linestyle=:dash, linewidth=2)
-    if debug
-        #print("Maximum value of sto2 = "*string(maximum(value.(sp[2, :sto2], s).data))*"\n")
-    end
+    plot!(plt_sto, value.(sp[2, :sto_in2], s).axes, stor_charge, label="stochastic storage charge in scenario $s", linestyle=:dash, linewidth=2)
+
     display(plot(plt_invest, plt, plt_sto, layout = (3,1)))
     #print(s)
 end

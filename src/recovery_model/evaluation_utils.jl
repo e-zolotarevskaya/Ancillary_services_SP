@@ -1,23 +1,24 @@
 using Plots
+function evaluate_decision_wrapper(p, decision, scenario)
+    cost = 0.
+    try cost = evaluate_decision(p, decision, scenario)
+    catch e
+        cost = Inf
+    end
+    return cost
+end
 
 function test_decision(p, timesteps)
-    infeasible_count = 0
     costs = []
     decision = optimal_decision(p)
     for sign in [-1,1]
         for t in timesteps
             scenario = @scenario t_xi = t s_xi = sign F_xi = 150. probability = 1.
-            try evaluate_decision(p, decision, scenario);
-            catch e;
-                infeasible_count += 1;
-                append!(costs, Inf)
-            end
-            append!(costs, evaluate_decision(p, decision, scenario))
+            c = evaluate_decision_wrapper(p, decision, scenario)
+            append!(costs, c)
         end
     end
     N = length(timesteps)
-    print(infeasible_count/N/2.)
-
     scenario_results = hcat(costs, vcat(timesteps, timesteps), vcat(-1*ones(N), ones(N)))
     return scenario_results
 end
@@ -34,7 +35,7 @@ function test_decision_variate_F(p, timesteps; F_step = 50., F_max = 300.)
             end
             for F in F_step:F_step:F_max
                 scenario = @scenario t_xi = t s_xi = Sign F_xi = 150. probability = 1.
-                c = evaluate_decision(p, decision, scenario)
+                c = evaluate_decision_wrapper(p, decision, scenario)
                 if c!= Inf
                     F_potential[i] = F*Sign
                     costs[i] = c
