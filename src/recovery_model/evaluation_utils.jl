@@ -8,22 +8,7 @@ function evaluate_decision_wrapper(p, decision, scenario)
     return cost
 end
 
-function test_decision(p, timesteps)
-    costs = []
-    decision = optimal_decision(p)
-    for sign in [-1,1]
-        for t in timesteps
-            scenario = @scenario t_xi = t s_xi = sign F_xi = 150. probability = 1.
-            c = evaluate_decision_wrapper(p, decision, scenario)
-            append!(costs, c)
-        end
-    end
-    N = length(timesteps)
-    scenario_results = hcat(costs, vcat(timesteps, timesteps), vcat(-1*ones(N), ones(N)))
-    return scenario_results
-end
-
-function test_decision_variate_F(p, timesteps; F_step = 50., F_max = 300.)
+function test_decision(p, timesteps; F_step = 50., F_max = 300.)
     decision = optimal_decision(p)
     costs = zeros(2*length(timesteps))
     F_potential = zeros(2*length(timesteps))

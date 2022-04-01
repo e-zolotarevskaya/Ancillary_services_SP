@@ -77,7 +77,6 @@ plot_results(sp, pv, wind, demand, hd = heatdemand, s = 8, stage_1 = [:gci, :gco
 plot_difference(sp, s=8)
 
 ##
-scen_results = test_decision(sp, timesteps)
-scen_results_F = test_decision_variate_F(sp, timesteps, F_step = 500., F_max = 1000.)
+scen_results = test_decision(sp, 1:t_max, F_step = 500., F_max = 500.)
 
 plot_flexibility(scen_results, objective_value(sp))
