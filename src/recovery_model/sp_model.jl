@@ -81,8 +81,6 @@ function define_energy_system(pv, wind, demand, heatdemand; p = default_es_pars)
             @constraint(model, [t in 1:number_of_hours], heat_sto_soc[t] <= u_heat_storage)
             @constraint(model, heat_sto_soc[1] == u_heat_storage / 2)
             @constraint(model, heat_sto_soc[number_of_hours] - heat_sto_out[number_of_hours] + heat_sto_in[number_of_hours] == heat_sto_soc[1])
-            COP = 1.
-            losses = 0.01
             # Energy balance
             @constraint(model, [t in 1:number_of_hours], 
             gci[t] - gco[t] + u_pv * pv[t] + u_wind * wind[t] - demand[t] + sto_in[t] - sto_out[t] - heatpumpflow[t] == 0)
@@ -141,8 +139,15 @@ function define_energy_system(pv, wind, demand, heatdemand; p = default_es_pars)
             @constraint(model, gci2[1] - gco2[1] + u_pv * pv[t_xi] + u_wind * wind[t_xi]
              - demand[t_xi] + sto_in2[1] - sto_out2[1]
              - heatpumpflow2[1] + F_xi * s_xi == 0)
-            @constraint(model, gci2[1] == gci[t_xi])
-            @constraint(model, gco2[1] == gco[t_xi])
+            #@constraint(model, gci2[1] == gci[t_xi])
+            #@constraint(model, gco2[1] == gco[t_xi])
+            ## Utility variables to linearize min|gci[t_xi]-gci2[1]|
+            @recourse(model, gi1>=0)
+            @recourse(model, gi2>=0)
+            @constraint(model, gci2[1]-gci[t_xi] == gi1-gi2)
+            @recourse(model, go1>=0)
+            @recourse(model, go2>=0)
+            @constraint(model, gco2[1]-gco[t_xi] == go1-go2)
             # Post event energy balance
             @constraint(model, [t in 2:recovery_time],
             gci2[t] - gco2[t]
@@ -154,7 +159,9 @@ function define_energy_system(pv, wind, demand, heatdemand; p = default_es_pars)
             @objective(model, Min,
             + c_i * (sum(gci2) - sum(gci[t_xi:t_xi_final]))
             - c_o * (sum(gco2) - sum(gco[t_xi:t_xi_final]))
-            + c_sto_op * (sum(sto_in2) + sum(sto_out2) - sum(sto_in[t_xi:t_xi_final]) - sum(sto_out[t_xi:t_xi_final])))
+            + penalty * (gi1 + gi2) + penalty * (go1 + go2)
+            + c_sto_op * (sum(sto_in2) + sum(sto_out2) 
+            - sum(sto_in[t_xi:t_xi_final]) - sum(sto_out[t_xi:t_xi_final])))
         end
     end
     energy_system
