@@ -46,26 +46,23 @@ function plot_flexibility(scen_results, ov)
     positive_potential = zeros(T ÷ 2)
     negative_potential = zeros(T ÷ 2)
     for i in 1:T
+        # 3rd column represents demanded flexibility
         if scen_results[i, 3] > 0
             if scen_results[i, 1] != Inf && scen_results[i, 1] != -Inf
                 positive_flexibility[Int(scen_results[i, 2])] = scen_results[i, 1] - ov
-                if scen_results != Inf
-                    positive_potential[Int(scen_results[i, 2])] = scen_results[i, 3]
-                end
+                positive_potential[Int(scen_results[i, 2])] = scen_results[i, 3]
             end
         else
             if scen_results[i, 1] != Inf && scen_results[i, 1] != -Inf
                 negative_flexibility[Int(scen_results[i, 2])] = scen_results[i, 1] - ov
-                if scen_results != -Inf
-                    negative_potential[Int(scen_results[i, 2])] = scen_results[i, 3]
-                end
+                negative_potential[Int(scen_results[i, 2])] = scen_results[i, 3]
             end
         end
     end
     plt_cost = plot()
     plt_pot = plot()
     plot!(plt_cost, positive_flexibility ./ positive_potential, label = "price of positive flexibility")
-    plot!(plt_cost, negative_flexibility ./ negative_potential, label = "price of negative flexibility")
+    plot!(plt_cost, -negative_flexibility ./ negative_potential, label = "price of negative flexibility")
     plot!(plt_pot, positive_potential, fillrange = 0, fillalpha = 0.35, label = "positive flexibility potential")
     plot!(plt_pot, negative_potential, fillrange = 0, fillalpha = 0.35, label = "negative flexibility potential")
     display(plot(plt_cost, plt_pot, layout = (2, 1)))
