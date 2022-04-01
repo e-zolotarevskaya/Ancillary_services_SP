@@ -34,3 +34,6 @@ python_prototype/.ipynb_checkpoints
 
 .vscode/settings.json
 .idea/
+
+# plots
+plots/
