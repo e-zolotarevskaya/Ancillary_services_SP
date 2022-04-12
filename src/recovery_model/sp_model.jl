@@ -24,8 +24,12 @@ function simple_flex_sampler(n, F_max, t_max)
         for i in 1:n]
 end
 
+function no_flex_pseudo_sampler()
+    [@scenario t_xi = 1 s_xi = 1 F_xi = 0. probability = 1.
+    ,]
+end
 
-function define_energy_system(pv, wind, demand, heatdemand; p = default_es_pars)
+function define_energy_system(pv, wind, demand, heatdemand; p = default_es_pars, strict_flex=false)
     number_of_hours = minimum([length(pv), length(demand), length(wind)])
     c_sto_op = p[:c_sto_op]
     c_i = p[:c_i]
@@ -139,8 +143,10 @@ function define_energy_system(pv, wind, demand, heatdemand; p = default_es_pars)
             @constraint(model, gci2[1] - gco2[1] + u_pv * pv[t_xi] + u_wind * wind[t_xi]
              - demand[t_xi] + sto_in2[1] - sto_out2[1]
              - heatpumpflow2[1] + F_xi * s_xi == 0)
-            #@constraint(model, gci2[1] == gci[t_xi])
-            #@constraint(model, gco2[1] == gco[t_xi])
+            if strict_flex
+                @constraint(model, gci2[1] == gci[t_xi])
+                @constraint(model, gco2[1] == gco[t_xi])
+            end
             ## Utility variables to linearize min|gci[t_xi]-gci2[1]|
             @recourse(model, gi1>=0)
             @recourse(model, gi2>=0)
