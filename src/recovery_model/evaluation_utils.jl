@@ -8,63 +8,59 @@ function evaluate_decision_wrapper(p, decision, scenario)
     return cost
 end
 
-function test_decision(p, timesteps; F_step = 50., F_max = 300.)
+function test_decision(p, timesteps; F_min = 100., F_step = 50., F_max = 300.)
     decision = optimal_decision(p)
-    costs = zeros(2*length(timesteps))
-    F_potential = zeros(2*length(timesteps))
-    for Sign in [-1,1]
-        for t in timesteps
-            i = t
-            if Sign == 1
-                i = t + length(timesteps)
+    L = length(timesteps)
+    cost_pos_flex = zeros(L)
+    cost_neg_flex = zeros(L)
+    potential_pos_flex = zeros(L)
+    potential_neg_flex = zeros(L)
+    for t in timesteps
+        for F in F_min:F_step:F_max
+            scenario = @scenario t_xi = t s_xi = 1 F_xi = F probability = 1.
+            c = evaluate_decision_wrapper(p, decision, scenario)
+            if c!= Inf
+                potential_pos_flex[t] = F
+                cost_pos_flex[t] = c
+            else
+                if cost_pos_flex[t] == 0
+                    cost_pos_flex[t] = Inf
+                    break
+                end
             end
-            for F in F_step:F_step:F_max
-                scenario = @scenario t_xi = t s_xi = Sign F_xi = 150. probability = 1.
-                c = evaluate_decision_wrapper(p, decision, scenario)
-                if c!= Inf
-                    F_potential[i] = F*Sign
-                    costs[i] = c
-                else
-                    if costs[i] == 0
-                        costs[i] = Inf
-                        F_potential[i] = F*Sign
-                        break
-                    end
+        end
+        for F in F_min:F_step:F_max
+            scenario = @scenario t_xi = t s_xi = -1 F_xi = F probability = 1.
+            c = evaluate_decision_wrapper(p, decision, scenario)
+            if c!= Inf
+                potential_neg_flex[t] = -F
+                cost_neg_flex[t] = c
+            else
+                if cost_neg_flex[t] == 0
+                    cost_neg_flex[t] = Inf
+                    break
                 end
             end
         end
     end
-    print(F_potential)
-    scenario_results = hcat(costs, vcat(timesteps, timesteps), F_potential)
-    return scenario_results
+    
+    return cost_pos_flex, potential_pos_flex, cost_neg_flex, potential_neg_flex
 end
 
-function plot_flexibility(scen_results, ov)
-    T = size(scen_results)[1]
-    positive_flexibility = zeros(T ÷ 2)
-    negative_flexibility = zeros(T ÷ 2)
-    positive_potential = zeros(T ÷ 2)
-    negative_potential = zeros(T ÷ 2)
-    for i in 1:T
-        # 3rd column represents demanded flexibility
-        if scen_results[i, 3] > 0
-            if scen_results[i, 1] != Inf && scen_results[i, 1] != -Inf
-                positive_flexibility[Int(scen_results[i, 2])] = scen_results[i, 1] - ov
-                positive_potential[Int(scen_results[i, 2])] = scen_results[i, 3]
-            end
-        else
-            if scen_results[i, 1] != Inf && scen_results[i, 1] != -Inf
-                negative_flexibility[Int(scen_results[i, 2])] = scen_results[i, 1] - ov
-                negative_potential[Int(scen_results[i, 2])] = scen_results[i, 3]
-            end
-        end
-    end
+function plot_flexibility(timesteps, cost_pos_flex, potential_pos_flex, cost_neg_flex, potential_neg_flex, obj_value)
     plt_cost = plot()
     plt_pot = plot()
-    plot!(plt_cost, positive_flexibility ./ positive_potential, label = "price of positive flexibility")
-    plot!(plt_cost, -negative_flexibility ./ negative_potential, label = "price of negative flexibility")
-    plot!(plt_pot, positive_potential, fillrange = 0, fillalpha = 0.35, label = "positive flexibility potential")
-    plot!(plt_pot, negative_potential, fillrange = 0, fillalpha = 0.35, label = "negative flexibility potential")
+    plot!(plt_cost, timesteps, (cost_pos_flex .- obj_value)./ potential_pos_flex, label = "price of positive flexibility")
+    plot!(plt_cost, timesteps, (-cost_neg_flex .- obj_value)./ potential_neg_flex, label = "price of negative flexibility")
+    plot!(plt_pot, timesteps, potential_pos_flex, fillrange = 0, fillalpha = 0.35, label = "positive flexibility potential")
+    plot!(plt_pot, timesteps, potential_neg_flex, fillrange = 0, fillalpha = 0.35, label = "negative flexibility potential")
     display(plot(plt_cost, plt_pot, layout = (2, 1)))
-    return positive_flexibility, negative_flexibility, positive_potential, negative_potential
+end
+
+function flexibility_availability(potential)
+    pot = sort(unique(potential))
+    #frac = [length(pot[pot.>=f]) for f in pot]./length(pot)
+    frac = [sum(potential[:].<=f) for f in pot]./length(potential)
+    plt = plot(pot, frac)
+    display(plt)
 end
