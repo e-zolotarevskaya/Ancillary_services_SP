@@ -28,7 +28,6 @@ pars = copy(default_es_pars)
 using Statistics
 average_hourly_demand = mean(demand)
 
-pars[:flexible_demand] = average_hourly_demand * 100. # Over the year, we have 100 demand hours that are shiftable freely...
 pars[:recovery_time] = 24
 pars[:c_storage] = 100.
 pars[:c_pv] = 300.
@@ -37,7 +36,7 @@ pars[:c_sto_op] = 0.00001
 
 heatdemand = copy(demand)./300.
 heatdemand0 = zeros(length(demand))
-es = define_energy_system(pv, wind, demand, heatdemand0; p = pars, strict_flex = true)
+es = define_energy_system(pv, wind, demand, heatdemand; p = pars, strict_flex = true)
 
 ##
 n = 100
@@ -51,13 +50,22 @@ using Cbc
 
 sp = instantiate(es, scens, optimizer = Cbc.Optimizer)
 
-# using GLPK
-
-# sp = instantiate(es, scens, optimizer = GLPK.Optimizer)
-
 ##
 
 optimize!(sp)
+
+##
+
+od = optimal_decision(sp)
+
+ov = objective_value(sp)
+ovs = [objective_value(sp, i) for i in 1:length(scens)]
+eds = [evaluate_decision(sp, od, scen) for scen in scens]
+
+##
+
+@show maximum(eds .- ovs)
+@show minimum(eds .- ovs)
 
 ##
 
@@ -72,37 +80,50 @@ println("Heat storage: $(round(value.(sp[1, :u_heat_storage]); digits = 2))")
 
 ##
 
-plot_results(sp, pv, wind, demand, s = 8, stage_1 = [:gci, :gco], stage_2 = [:gci2, :gco2])
+plot_results(sp, pv, wind, demand, hd = heatdemand, s = 8, stage_1 = [:gci, :gco], stage_2 = [:gci2, :gco2])
 
 plot_difference(sp, s=8)
 
 ##
-cost_pos, pot_pos, cost_neg, pot_neg = test_decision(sp, 1:t_max, F_min = 50., F_step = 50., F_max = 1000.)
-
-od_no_flex = evaluate_decision(sp, optimal_decision(sp), no_flex_pseudo_sampler()[1])
+cost_pos, pot_pos, cost_neg, pot_neg = test_decision(sp, 1:t_max)
 
 plot_flexibility(1:t_max, cost_pos, pot_pos, cost_neg, pot_neg, objective_value(sp))
-
-##
-
-ov = objective_value(sp)
-
-for s in 1:n
-    ov += objective_value(sp, s)
-end
 
 ##
 sp0 = instantiate(es, no_flex_pseudo_sampler(), optimizer = Cbc.Optimizer)
 
 optimize!(sp0)
 
-plot_results(sp0, pv, wind, demand, s = 1, stage_1 = [:gci, :gco], stage_2 = [:gci2, :gco2])
+plot_results(sp0, pv, wind, demand, hd = heatdemand, s = 1, stage_1 = [:gci, :gco], stage_2 = [:gci2, :gco2])
 
 
-cost_pos0, pot_pos0, cost_neg0, pot_neg0 = test_decision(sp0, 1:t_max, F_min = 500., F_step = 500., F_max = 1000.)
+cost_pos0, pot_pos0, cost_neg0, pot_neg0 = test_decision(sp0, 1:t_max)
 
 
 plot_flexibility(1:t_max, cost_pos0, pot_pos0, cost_neg0, pot_neg0, objective_value(sp0))
 
-scen = @scenario t_xi = 28 s_xi = 1 F_xi = 1. probability = 1.
-evaluate_decision_wrapper(sp, optimal_decision(sp), scen)
+plt_pot = plot()
+plot!(plt_pot, 1:t_max, pot_pos0, fillrange = 0, fillalpha = 0.35, label = "positive flexibility potential")
+plot!(plt_pot, 1:t_max, pot_neg0, fillrange = 0, fillalpha = 0.35, label = "negative flexibility potential")
+
+##
+cost_pos, pot_pos, cost_neg, pot_neg = test_decision(sp, 1:t_max)
+
+plot_flexibility(1:t_max, cost_pos, pot_pos, cost_neg, pot_neg, objective_value(sp))
+
+plt_pot = plot()
+plot!(plt_pot, 1:t_max, pot_pos, fillrange = 0, fillalpha = 0.35, label = "positive flexibility potential")
+plot!(plt_pot, 1:t_max, pot_neg, fillrange = 0, fillalpha = 0.35, label = "negative flexibility potential")
+
+display(plt_pot)
+
+av_pos, av_neg = flexibility_availability(pot_pos, pot_neg)
+av_pos0, av_neg0 = flexibility_availability(pot_pos0, pot_neg0)
+begin
+    plt_av = plot()
+    plot!(plt_av, sort(unique(pot_pos)), av_pos, label = "+ flexibility in scenario-aware system", c=:red)
+    plot!(plt_av, sort(unique(pot_pos0)), av_pos0, label = "+ flexibility in scenario-unaware system", c=:red, linestyle = :dash)
+    plot!(plt_av, sort(unique(pot_neg)), av_neg, label = "- flexibility in scenario-aware system", c=:blue)
+    plot!(plt_av, sort(unique(pot_neg0)), av_neg0, label = "- flexibility in scenario-unaware system", c=:blue, linestyle=:dash)
+    display(plt_av)
+end
