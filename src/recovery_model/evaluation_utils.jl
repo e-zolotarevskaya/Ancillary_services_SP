@@ -1,4 +1,5 @@
 using Plots
+using Distributed
 function evaluate_decision_wrapper(p, decision, scenario)
     cost = 0.
     try cost = evaluate_decision(p, decision, scenario)
@@ -15,7 +16,7 @@ function test_decision(p, timesteps)
     cost_neg_flex = zeros(L)
     potential_pos_flex = zeros(L)
     potential_neg_flex = zeros(L)
-    for t in timesteps
+    @distributed for t in timesteps
         potential_pos_flex[t], cost_pos_flex[t] = find_f_max(p,t,1,decision,10.)
         potential_neg_flex[t], cost_neg_flex[t] = find_f_max(p,t,-1,decision,10.)
     end
@@ -33,16 +34,11 @@ function plot_flexibility(timesteps, cost_pos_flex, potential_pos_flex, cost_neg
     display(plot(plt_cost, plt_pot, layout = (2, 1)))
 end
 
-function flexibility_availability(potential_pos, potential_neg)
-    pot_pos = sort(unique(potential_pos))
-    frac_pos = 1 .-[sum(potential_pos[:].<=f) for f in pot_pos]./length(potential_pos)
-    pot_neg = sort(unique(potential_neg))
-    frac_neg = [sum(potential_neg[:].<=f) for f in pot_neg]./length(potential_neg)
-
-    #plt = plot(pot_neg, frac_neg)
-    #plot!(plt, pot_pos, frac_pos)
-    #display(plt)
-    return frac_pos, frac_neg
+function flexibility_availability(plt, flex_potential; plot_options...)
+        p_sorted = sort(unique(flex_potential))
+        fraction = 1 .-[sum(flex_potential[:].<=f) for f in p_sorted]./length(flex_potential)
+        plot!(plt, p_sorted, fraction)
+    display(plt_av)
 end
 
 function find_f_max(p,t,s,od,tol; maxiter = 100)

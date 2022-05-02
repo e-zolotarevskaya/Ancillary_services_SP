@@ -117,13 +117,8 @@ plot!(plt_pot, 1:t_max, pot_neg, fillrange = 0, fillalpha = 0.35, label = "negat
 
 display(plt_pot)
 
-av_pos, av_neg = flexibility_availability(pot_pos, pot_neg)
-av_pos0, av_neg0 = flexibility_availability(pot_pos0, pot_neg0)
-begin
-    plt_av = plot()
-    plot!(plt_av, sort(unique(pot_pos)), av_pos, label = "+ flexibility in scenario-aware system", c=:red)
-    plot!(plt_av, sort(unique(pot_pos0)), av_pos0, label = "+ flexibility in scenario-unaware system", c=:red, linestyle = :dash)
-    plot!(plt_av, sort(unique(pot_neg)), av_neg, label = "- flexibility in scenario-aware system", c=:blue)
-    plot!(plt_av, sort(unique(pot_neg0)), av_neg0, label = "- flexibility in scenario-unaware system", c=:blue, linestyle=:dash)
-    display(plt_av)
-end
+#label_av = ["+ flexibility in scenario-aware system", "+ flexibility in scenario-unaware system"]
+
+plt_av = plot();
+flexibility_availability(plt_av, pot_pos)
+flexibility_availability(plt_av, pot_pos0)
