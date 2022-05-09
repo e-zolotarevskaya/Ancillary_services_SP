@@ -56,19 +56,6 @@ optimize!(sp)
 
 ##
 
-od = optimal_decision(sp)
-
-ov = objective_value(sp)
-ovs = [objective_value(sp, i) for i in 1:length(scens)]
-eds = [evaluate_decision(sp, od, scen) for scen in scens]
-
-##
-
-@show maximum(eds .- ovs)
-@show minimum(eds .- ovs)
-
-##
-
 println("Objective value: $(objective_value(sp))")
 
 println("PV: $(round(value.(sp[1, :u_pv]); digits = 2)) -- Wind: $(round(value.(sp[1, :u_wind]); digits = 2)) -- Battery: $(round(value.(sp[1, :u_storage]); digits = 2))")
@@ -96,29 +83,20 @@ optimize!(sp0)
 
 plot_results(sp0, pv, wind, demand, hd = heatdemand, s = 1, stage_1 = [:gci, :gco], stage_2 = [:gci2, :gco2])
 
-
 cost_pos0, pot_pos0, cost_neg0, pot_neg0 = test_decision(sp0, 1:t_max)
 
-
 plot_flexibility(1:t_max, cost_pos0, pot_pos0, cost_neg0, pot_neg0, objective_value(sp0))
-
-plt_pot = plot()
-plot!(plt_pot, 1:t_max, pot_pos0, fillrange = 0, fillalpha = 0.35, label = "positive flexibility potential")
-plot!(plt_pot, 1:t_max, pot_neg0, fillrange = 0, fillalpha = 0.35, label = "negative flexibility potential")
 
 ##
 cost_pos, pot_pos, cost_neg, pot_neg = test_decision(sp, 1:t_max)
 
 plot_flexibility(1:t_max, cost_pos, pot_pos, cost_neg, pot_neg, objective_value(sp))
 
-plt_pot = plot()
-plot!(plt_pot, 1:t_max, pot_pos, fillrange = 0, fillalpha = 0.35, label = "positive flexibility potential")
-plot!(plt_pot, 1:t_max, pot_neg, fillrange = 0, fillalpha = 0.35, label = "negative flexibility potential")
-
-display(plt_pot)
-
 #label_av = ["+ flexibility in scenario-aware system", "+ flexibility in scenario-unaware system"]
 
 plt_av = plot();
 flexibility_availability(plt_av, pot_pos)
 flexibility_availability(plt_av, pot_pos0)
+flexibility_availability(plt_av, pot_neg)
+flexibility_availability(plt_av, pot_neg0)
+##

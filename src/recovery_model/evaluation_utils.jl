@@ -28,15 +28,15 @@ function plot_flexibility(timesteps, cost_pos_flex, potential_pos_flex, cost_neg
     plt_cost = plot()
     plt_pot = plot()
     plot!(plt_cost, timesteps, (cost_pos_flex .- obj_value)./ potential_pos_flex, label = "price of positive flexibility")
-    plot!(plt_cost, timesteps, (-cost_neg_flex .- obj_value)./ potential_neg_flex, label = "price of negative flexibility")
+    plot!(plt_cost, timesteps, (cost_neg_flex .- obj_value)./ potential_neg_flex, label = "price of negative flexibility")
     plot!(plt_pot, timesteps, potential_pos_flex, fillrange = 0, fillalpha = 0.35, label = "positive flexibility potential")
-    plot!(plt_pot, timesteps, potential_neg_flex, fillrange = 0, fillalpha = 0.35, label = "negative flexibility potential")
+    plot!(plt_pot, timesteps, potential_neg_flexS, fillrange = 0, fillalpha = 0.35, label = "negative flexibility potential")
     display(plot(plt_cost, plt_pot, layout = (2, 1)))
 end
 
 function flexibility_availability(plt, flex_potential; plot_options...)
         p_sorted = sort(unique(flex_potential))
-        fraction = 1 .-[sum(flex_potential[:].<=f) for f in p_sorted]./length(flex_potential)
+        fraction = 1 .-[sum(abs.(flex_potential[:]).<=abs(f)) for f in p_sorted]./length(flex_potential)
         plot!(plt, p_sorted, fraction)
     display(plt_av)
 end
@@ -50,24 +50,23 @@ function find_f_max(p,t,s,od,tol; maxiter = 100)
     if cost == Inf
         return 0.,cost
     else
-        while b-a>tol && i<maxiter
+        while b-a>tol && i<=maxiter
             i+=1
-            scen = @scenario t_xi = t s_xi = s F_xi = (a+b)/2 probability = 1.
+            scen = @scenario t_xi = t s_xi = s F_xi = b probability = 1.
             cost = evaluate_decision_wrapper(p,od,scen)
             if cost == Inf
                 b = (a+b)/2
             else
-                local at = a
-                a = (a+b)/2
-                b = (3b-at)/2
+                a = b
+                b *= 2
             end
         end
         if cost == Inf
-            scen = @scenario t_xi = t s_xi = s F_xi = (a+b)/2-tol probability = 1.
+            scen = @scenario t_xi = t s_xi = s F_xi = b-tol probability = 1.
             cost = evaluate_decision_wrapper(p,od,scen)
         end
         println(i)
-        return s*(a+b)/2,cost
+        return s*b,cost
     end
 end
 
