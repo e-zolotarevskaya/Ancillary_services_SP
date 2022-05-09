@@ -1,11 +1,24 @@
 using Plots
 
-function plot_results(sp, pv, w, d; hd = 0, s=1, stage_1=[:gci, :gco], stage_2=[:gci2, :gco2])
+function plot_results(sp, pv, w, d; hd = 0, s=1, stage_1=[:gci, :gco], stage_2=[:gci2, :gco2], inv_dict = 0)
+    if inv_dict != 0
+        u_pv = inv_dict[:u_pv]
+        u_wind = inv_dict[:u_wind]
+        u_storage = inv_dict[:u_storage]
+        u_heatpump = inv_dict[:u_heatpump]
+        u_heat_storage = inv_dict[:u_heat_storage]
+    else
+        u_pv = value.(sp[1, :u_pv])
+        u_wind = value.(sp[1, :u_wind])
+        u_storage = value.(sp[1, :u_storage])
+        u_heatpump = value.(sp[1, :u_heatpump])
+        u_heat_storage = value.(sp[1, :u_heat_storage])
+    end
     plt_sto = plot()
     plt_invest = plot()
     plt = plot()
-    plot!(plt_invest, pv .* value(sp[1, :u_pv]), label="pv")
-    plot!(plt_invest, w .* value(sp[1, :u_wind]), label="wind")
+    plot!(plt_invest, pv .* u_pv, label="pv")
+    plot!(plt_invest, w .* u_wind, label="wind")
     plot!(plt_invest, d, label="demand")
     t_xi = scenarios(sp)[s].data.t_xi
     recovery_time = sp.stages[2].parameters[:recovery_time]
