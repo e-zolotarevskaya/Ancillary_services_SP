@@ -62,6 +62,8 @@ fixed_investment = Dict((
     :u_heatpump => value.(sp[1, :u_heatpump]),
     :u_heat_storage => value.(sp[1, :u_heat_storage])
 ))
+
+
 # for s in 1:minimum((n, 10))
 #     println("Second stage objective value in scenario $s: $(objective_value(sp, s))")
 # end
@@ -70,18 +72,18 @@ fixed_investment = Dict((
 
 plot_results(sp, pv, wind, demand, hd = heatdemand, s = 1, stage_1 = [:gci, :gco], stage_2 = [:gci2, :gco2])
 ##
-es_fixed = define_energy_system_fixed_investment(pv, wind, demand, heatdemand, p = pars, inv_dict = fixed_investment, strict_flex = true)
-##
+
 n = 100
 F_max = average_hourly_demand * 0.1 # Have ancillary services equal to 10% of our typical demand
 t_max = length(pv) - es.parameters[2].defaults[:recovery_time]
 
 scens = simple_flex_sampler(n, F_max, t_max)
 ##
-
+es_fixed = define_energy_system(pv, wind, demand, heatdemand; p = pars, strict_flex = true)
 sp_f = instantiate(es_fixed, scens, optimizer = Cbc.Optimizer)
+fix_investment!(sp_f, string.(keys(fixed_investment)), values(fixed_investment))
 
-optimize!(sp)
+optimize!(sp_f)
 ##
 
 optimal_decision(sp_f)
@@ -97,10 +99,12 @@ cost_pos_f, pot_pos_f, cost_neg_f, pot_neg_f = test_decision(sp_f, 1:t_max)
 plot_flexibility(1:t_max, cost_pos_f, pot_pos_f, cost_neg_f, pot_neg_f, objective_value(sp))
 
 #label_av = ["+ flexibility in scenario-aware system", "+ flexibility in scenario-unaware system"]
-
+begin
 plt_av = plot();
-flexibility_availability(plt_av, pot_pos)
-flexibility_availability(plt_av, pot_pos_f)
-flexibility_availability(plt_av, pot_neg)
-flexibility_availability(plt_av, pot_neg_f)
+flexibility_availability(plt_av, pot_pos, label = "positive flexbility unaware");
+flexibility_availability(plt_av, pot_pos_f, label = "positive fleibility aware");
+flexibility_availability(plt_av, pot_neg, label = "negative flexibility unaware");
+flexibility_availability(plt_av, pot_neg_f, label = "negative flexibility aware");
+display(plt_av)
+end
 ##
